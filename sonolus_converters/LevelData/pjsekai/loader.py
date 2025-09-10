@@ -138,7 +138,9 @@ def load(fp: TextIO) -> Score:
             ignored, hidden, critical, trace, attached, active, type = (
                 reverse_slide_archetype(archetype)
             )
-            # raise NotImplementedError("oop")
+            if hidden:
+                continue # generated during export
+            raise NotImplementedError("Guides/Holds loading not implemented for pjsekai loader.")
             if active:
                 slide = Slide(critical=critical)
                 connections = data.get("connections", [])
