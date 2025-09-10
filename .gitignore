@@ -1,3 +1,8 @@
+# temporary testing files
+*.usc
+*.sus
+LevelData
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

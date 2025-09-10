@@ -1,3 +1,5 @@
+import math
+
 import custom_sus_io as csus
 from typing import cast
 from .. import __version__
@@ -24,7 +26,7 @@ def usc_lanes_to_sus_lanes(lane: float, size: float) -> int:
 def usc_notesize_to_sus_notesize(size: float) -> int:
     # if size % 0.5 != 0:
     #    Exception("小数幅が検出されました")
-    return int(size * 2)
+    return int(math.ceil(size * 2))
 
 
 def export(path: str, score: Score):

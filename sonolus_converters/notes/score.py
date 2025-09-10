@@ -231,6 +231,126 @@ class Score:
                     )
                 )
 
+    def strip_extended_lanes(self, resize_if_possible: bool = False):
+        """
+        This is a very crude function that deletes any notes with a lane value not supported in the base game.
+
+        resize_if_possible: attempts to resize the note to fit.
+        - If not enabled, if the note starts OR ends outside, it'll be deleted.
+        - If enabled, a note fully outside is deleted, however a note with any part inside the main lanes will be kept.
+
+        Slides/Guides that have a start/end outside the lanes are fully deleted, otherwise only the connectors are deleted.
+        """
+        notes = []
+        max_lane = 6
+        min_lane = -6
+        for note in self.notes:
+            if isinstance(note, Bpm) or isinstance(note, TimeScaleGroup):
+                continue
+            if isinstance(note, Single):
+                # note.lane 0 (+1/-1 for each lane, based on middle of note, starting at center lane)
+                # note.size +0.5 for each lane.
+                lane_start = note.lane - note.size
+                lane_end = note.lane + note.size
+                if lane_start < min_lane:
+                    if resize_if_possible and (lane_end > min_lane):
+                        # shift the left end, then the middle
+                        extra = abs(lane_start - min_lane)
+                        note.size -= extra / 2
+                        note.lane += extra / 2
+                if lane_end > max_lane:
+                    if (
+                        resize_if_possible
+                        and (lane_start < max_lane)
+                        and (lane_start >= min_lane)
+                    ):
+                        # shift the right end, then the middle
+                        extra = abs(lane_end - max_lane)
+                        note.size -= extra / 2
+                        note.lane -= extra / 2
+                lane_start = note.lane - note.size
+                lane_end = note.lane + note.size
+                if lane_start >= min_lane and lane_end <= max_lane:
+                    notes.append(note)
+            if isinstance(note, Slide):
+                connectors = []
+                should_add = True
+                for i, connector in enumerate(note.connections):
+                    lane_start = connector.lane - connector.size
+                    lane_end = connector.lane + connector.size
+                    added = False
+                    if lane_start < min_lane:
+                        if resize_if_possible and (lane_end > min_lane):
+                            # shift the left end, then the middle
+                            extra = abs(lane_start - min_lane)
+                            connector.size -= extra / 2
+                            connector.lane += extra / 2
+                    if lane_end > max_lane:
+                        if (
+                            resize_if_possible
+                            and (lane_start < max_lane)
+                            and (lane_start >= min_lane)
+                        ):
+                            # shift the right end, then the middle
+                            extra = abs(lane_end - max_lane)
+                            connector.size -= extra / 2
+                            connector.lane -= extra / 2
+                    lane_start = connector.lane - connector.size
+                    lane_end = connector.lane + connector.size
+                    if lane_start >= min_lane and lane_end <= max_lane:
+                        connectors.append(connector)
+                        added = True
+                    if (i == 0 or i == len(note.connections) - 1) and not added:
+                        should_add = False
+                if should_add:
+                    notes.append(
+                        Slide(
+                            critical=note.critical,
+                            connections=connectors,
+                            type=note.type,
+                        )
+                    )
+            if isinstance(note, Guide):
+                midpoints = []
+                should_add = True
+                for i, midpoint in enumerate(note.midpoints):
+                    lane_start = midpoint.lane - midpoint.size
+                    lane_end = midpoint.lane + midpoint.size
+                    added = False
+                    if lane_start < min_lane:
+                        if resize_if_possible and (lane_end > min_lane):
+                            # shift the left end, then the middle
+                            extra = abs(lane_start - min_lane)
+                            midpoint.size -= extra / 2
+                            midpoint.lane += extra / 2
+                    if lane_end > max_lane:
+                        if (
+                            resize_if_possible
+                            and (lane_start < max_lane)
+                            and (lane_start >= min_lane)
+                        ):
+                            # shift the right end, then the middle
+                            extra = abs(lane_end - max_lane)
+                            midpoint.size -= extra / 2
+                            midpoint.lane -= extra / 2
+                    lane_start = midpoint.lane - midpoint.size
+                    lane_end = midpoint.lane + midpoint.size
+                    if lane_start >= min_lane and lane_end <= max_lane:
+                        midpoints.append(midpoint)
+                        added = True
+                    if (i == 0 or i == len(note.midpoints) - 1) and not added:
+                        should_add = False
+                if should_add:
+                    notes.append(
+                        Guide(
+                            note.color,
+                            fade=note.fade,
+                            midpoints=midpoints,
+                            type=note.type,
+                        )
+                    )
+        self.notes = notes
+
     # 重なっているノーツをずらす
     def shift(self):
         tmp_notes = []
