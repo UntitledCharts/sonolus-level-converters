@@ -87,6 +87,7 @@ def load(fp: TextIO) -> Score:
 
         return ignored, hidden, critical, trace, attached, active, type
 
+    has_bpm = False
     for entity in leveldata.get("entities", []):
         archetype = entity.get("archetype")
         data = {d["name"]: d.get("value", d.get("ref")) for d in entity.get("data", [])}
@@ -102,6 +103,7 @@ def load(fp: TextIO) -> Score:
                     bpm=data[EngineArchetypeDataName.Bpm],
                 )
             )
+            has_bpm = True
 
         # TimeScale
         elif archetype == EngineArchetypeName.TimeScaleChange:
@@ -191,5 +193,8 @@ def load(fp: TextIO) -> Score:
                         )
                     )
                 notes.append(guide)
+
+    if not has_bpm:
+        notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
 
     return Score(metadata=metadata, notes=notes)

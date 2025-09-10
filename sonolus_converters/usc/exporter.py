@@ -1,6 +1,7 @@
 import json
 from dataclasses import asdict
 from ..notes.score import Score
+from ..notes.bpm import Bpm
 
 
 def _remove_none(data):
@@ -16,6 +17,8 @@ def _remove_none(data):
 
 
 def export(path: str, score: Score):
+    if not any(isinstance(note, Bpm) for note in score.notes):
+        score.notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
     notes = [asdict(i) for i in score.notes]
     _remove_none(notes)
 

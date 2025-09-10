@@ -36,6 +36,9 @@ def _remove_none(data):
 
 
 def export(path: str, score: Score):
+    if not any(isinstance(note, Bpm) for note in score.notes):
+        score.notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
+
     entities: List[LevelDataEntity] = []
     intermediate_refs: Dict[int, str] = {}  # id(intermediate) -> ref string
     intermediate_entities: Dict[int, Dict] = {}  # id(intermediate) -> entity

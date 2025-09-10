@@ -20,11 +20,13 @@ def load(fp: TextIO) -> Score:
     )
 
     notelist = []
+    has_bpm = False
     for obj in usc["usc"]["objects"]:
         type = obj["type"]
 
         if type == "bpm":
             notelist.append(Bpm(beat=round(obj["beat"], 6), bpm=obj["bpm"]))
+            has_bpm = True
 
         elif type == "timeScaleGroup":
             group = TimeScaleGroup()
@@ -140,5 +142,8 @@ def load(fp: TextIO) -> Score:
                     )
                 )
             notelist.append(guide)
+
+    if not has_bpm:
+        notelist.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
 
     return Score(metadata=metadata, notes=notelist)

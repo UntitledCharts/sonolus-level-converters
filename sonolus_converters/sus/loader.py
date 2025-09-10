@@ -97,8 +97,12 @@ def load(fp: TextIO) -> Score:
     notes = []
 
     # BPM
+    added_bpm = False
     for bpm in sorted(sus_score.bpms, key=lambda x: x[0]):
         notes.append(Bpm(beat=_tick_to_beat(bpm[0]), bpm=bpm[1]))
+        added_bpm = True
+    if not added_bpm:
+        notes.append(Bpm(beat=0, bpm=160.0))
 
     # ハイスピ
     exist_initial_time_scale = False
