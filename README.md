@@ -13,6 +13,7 @@ TODO:
 - Strip extended features:
     - Strip pysekai extended (to convert to chcy)
     - Strip chcy extended (to convert to base game)
+- Fix typing for color, and convert to base game correctly (USCs support more than YELLOW/GREEN color, while base game supports more)
 - Sonolus USC file (I don't actually believe this is needed, low priority)
 
 

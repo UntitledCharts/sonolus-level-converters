@@ -526,6 +526,11 @@ def export(path: str, score: Score):
                     )
             guides.append(guide)
 
+    if len(bpms) == 0:
+        # default to 160 bpm
+        # (tick 0, 160 bpm)
+        bpms.append((0, 160.0))
+
     sus_metadata = csus.Metadata(
         title=metadata.title,
         artist=metadata.artist,
