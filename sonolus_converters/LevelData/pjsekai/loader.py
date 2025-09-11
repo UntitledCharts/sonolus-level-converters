@@ -1,5 +1,5 @@
-import json
-from typing import TextIO, Literal
+import json, gzip
+from typing import IO, Literal
 
 from ...notes.score import Score
 from ...notes.metadata import MetaData
@@ -12,9 +12,17 @@ from ...notes.guide import Guide, GuidePoint
 from ...archetypes import EngineArchetypeName, EngineArchetypeDataName
 
 
-def load(fp: TextIO) -> Score:
+def load(fp: IO) -> Score:
     """Load a pjsekai LevelData file and convert it to a Score object."""
-    leveldata = json.load(fp)
+    # check first 2 bytes of possible gzip
+    start = fp.peek(2) if hasattr(fp, 'peek') else fp.read(2)
+    if not hasattr(fp, 'peek'):
+        fp.seek(0)  # set pointer back to start
+    if start[:2] == b'\x1f\x8b':  # GZIP magic number
+        with gzip.GzipFile(fileobj=fp, mode='rb') as gz:
+            leveldata = json.load(gz)
+    else:
+        leveldata = json.load(fp)
 
     metadata = MetaData(
         title="",

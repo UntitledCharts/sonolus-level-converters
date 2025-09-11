@@ -1,6 +1,8 @@
 # temporary testing files
 *.usc
 *.sus
+*.gz
+*.scp
 LevelData
 
 # Byte-compiled / optimized / DLL files

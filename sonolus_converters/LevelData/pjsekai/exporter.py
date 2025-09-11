@@ -1,4 +1,4 @@
-import json
+import json, gzip
 from dataclasses import dataclass, asdict
 from typing import Dict, List, Union, Optional, Literal
 
@@ -35,7 +35,7 @@ def _remove_none(data):
             _remove_none(obj)
 
 
-def export(path: str, score: Score):
+def export(path: str, score: Score, as_compressed: bool = True):
     if not any(isinstance(note, Bpm) for note in score.notes):
         score.notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
 
@@ -285,31 +285,30 @@ def export(path: str, score: Score):
 
                 if i == len(connections) - 1:
                     if connection.type == "end" and connection.judgeType != "none":
+                        if connection.direction:
+                            if connection.judgeType == "trace":
+                                if connection.critical:
+                                    archetype = 'CriticalTraceFlickNote'
+                                else:
+                                    archetype = 'NormalTraceFlickNote'
+                            else:
+                                if connection.critical:
+                                    archetype = 'CriticalSlideEndFlickNote'
+                                else:
+                                    archetype = 'NormalSlideEndFlickNote'
+                        else:
+                            if connection.judgeType == "trace":
+                                if connection.critical:
+                                    archetype = 'CriticalSlideEndTraceNote'
+                                else:
+                                    archetype = 'NormalSlideEndTraceNote'
+                            else:
+                                if connection.critical:
+                                    archetype = 'CriticalSlideEndNote'
+                                else:
+                                    archetype = 'NormalSlideEndNote'
                         ci = Intermediate(
-                            archetype=(
-                                "CriticalTraceFlickNote"
-                                if connection.direction
-                                and connection.judgeType == "trace"
-                                and connection.critical
-                                else (
-                                    "NormalTraceFlickNote"
-                                    if connection.direction
-                                    and connection.judgeType == "trace"
-                                    else (
-                                        "CriticalSlideEndFlickNote"
-                                        if connection.critical
-                                        else (
-                                            "NormalSlideEndFlickNote"
-                                            if connection.direction
-                                            else (
-                                                "CriticalSlideEndNote"
-                                                if connection.critical
-                                                else "NormalSlideEndNote"
-                                            )
-                                        )
-                                    )
-                                )
-                            ),
+                            archetype=archetype,
                             data={
                                 EngineArchetypeDataName.Beat: connection.beat,
                                 "lane": connection.lane,
@@ -491,5 +490,11 @@ def export(path: str, score: Score):
         "entities": entities,
     }
 
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(leveldata, f, indent=4, ensure_ascii=False)
+    if not as_compressed:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(leveldata, f, indent=4, ensure_ascii=False)
+    else:
+        data = json.dumps(leveldata, ensure_ascii=False, separators=(',', ':'))
+        encoded = data.encode('utf-8')
+        with gzip.open(f"{path}.gz", 'wb') as f:
+            f.write(encoded)
