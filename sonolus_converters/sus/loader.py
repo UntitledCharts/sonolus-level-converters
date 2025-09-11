@@ -216,8 +216,8 @@ def load(fp: TextIO) -> Score:
 
     # タップ、フリック系
     for note in sorted(sus_score.taps, key=lambda x: x.tick):
-        if note.type == 4:  # XXX: not sure what type of note this is ??
-            # appears in a converted chart as tiny notes on lane -7.5 outside the chart on the left
+        if note.type == 4:  # SKILL ACTIVATIONS (or damage notes in Chunithm)
+            # should NOT be loaded FROM a sus file.
             continue
         samepos_direction = _search_samepos_note(
             (note.tick, note.lane), sus_score.directionals, remove=True

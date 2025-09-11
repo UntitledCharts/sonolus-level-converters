@@ -3,6 +3,7 @@ class SusNoteType:
         TAP = 1
         C_TAP = 2
         FLICK = 3
+        SKILL = 4  # chunithm damage note, pjsk skill activation note
         TRACE = 5
         C_TRACE = 6
         ELASER = 7
