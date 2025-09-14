@@ -32,8 +32,6 @@ def export(path: str, score: Score, as_compressed: bool = True):
     if not any(isinstance(note, Bpm) for note in score.notes):
         score.notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
 
-    raise NotImplementedError()
-
     entities = [asdict(entity) for entity in entities]
     _remove_none(entities)
 
