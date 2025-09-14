@@ -288,25 +288,25 @@ def export(path: str, score: Score, as_compressed: bool = True):
                         if connection.direction:
                             if connection.judgeType == "trace":
                                 if connection.critical:
-                                    archetype = 'CriticalTraceFlickNote'
+                                    archetype = "CriticalTraceFlickNote"
                                 else:
-                                    archetype = 'NormalTraceFlickNote'
+                                    archetype = "NormalTraceFlickNote"
                             else:
                                 if connection.critical:
-                                    archetype = 'CriticalSlideEndFlickNote'
+                                    archetype = "CriticalSlideEndFlickNote"
                                 else:
-                                    archetype = 'NormalSlideEndFlickNote'
+                                    archetype = "NormalSlideEndFlickNote"
                         else:
                             if connection.judgeType == "trace":
                                 if connection.critical:
-                                    archetype = 'CriticalSlideEndTraceNote'
+                                    archetype = "CriticalSlideEndTraceNote"
                                 else:
-                                    archetype = 'NormalSlideEndTraceNote'
+                                    archetype = "NormalSlideEndTraceNote"
                             else:
                                 if connection.critical:
-                                    archetype = 'CriticalSlideEndNote'
+                                    archetype = "CriticalSlideEndNote"
                                 else:
-                                    archetype = 'NormalSlideEndNote'
+                                    archetype = "NormalSlideEndNote"
                         ci = Intermediate(
                             archetype=archetype,
                             data={
@@ -494,7 +494,7 @@ def export(path: str, score: Score, as_compressed: bool = True):
         with open(path, "w", encoding="utf-8") as f:
             json.dump(leveldata, f, indent=4, ensure_ascii=False)
     else:
-        data = json.dumps(leveldata, ensure_ascii=False, separators=(',', ':'))
-        encoded = data.encode('utf-8')
-        with gzip.open(f"{path}.gz", 'wb') as f:
+        data = json.dumps(leveldata, ensure_ascii=False, separators=(",", ":"))
+        encoded = data.encode("utf-8")
+        with gzip.open(f"{path}.gz", "wb") as f:
             f.write(encoded)

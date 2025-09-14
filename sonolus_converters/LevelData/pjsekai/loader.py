@@ -15,11 +15,11 @@ from ...archetypes import EngineArchetypeName, EngineArchetypeDataName
 def load(fp: IO) -> Score:
     """Load a pjsekai LevelData file and convert it to a Score object."""
     # check first 2 bytes of possible gzip
-    start = fp.peek(2) if hasattr(fp, 'peek') else fp.read(2)
-    if not hasattr(fp, 'peek'):
+    start = fp.peek(2) if hasattr(fp, "peek") else fp.read(2)
+    if not hasattr(fp, "peek"):
         fp.seek(0)  # set pointer back to start
-    if start[:2] == b'\x1f\x8b':  # GZIP magic number
-        with gzip.GzipFile(fileobj=fp, mode='rb') as gz:
+    if start[:2] == b"\x1f\x8b":  # GZIP magic number
+        with gzip.GzipFile(fileobj=fp, mode="rb") as gz:
             leveldata = json.load(gz)
     else:
         leveldata = json.load(fp)
@@ -147,8 +147,10 @@ def load(fp: IO) -> Score:
                 reverse_slide_archetype(archetype)
             )
             if hidden:
-                continue # generated during export
-            raise NotImplementedError("Guides/Holds loading not implemented for pjsekai loader.")
+                continue  # generated during export
+            raise NotImplementedError(
+                "Guides/Holds loading not implemented for pjsekai loader."
+            )
             if active:
                 slide = Slide(critical=critical)
                 connections = data.get("connections", [])

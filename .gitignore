@@ -3,7 +3,7 @@
 *.sus
 *.gz
 *.scp
-LevelData
+/LevelData
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
