@@ -3,6 +3,18 @@ from typing import Literal
 
 
 @dataclass
+class Damage:
+    beat: float
+    lane: float
+    size: float
+    timeScaleGroup: float
+    type: str = "damage"
+
+    def get_sort_number(self) -> int:
+        return 3
+
+
+@dataclass
 class Single:
     beat: float
     critical: bool

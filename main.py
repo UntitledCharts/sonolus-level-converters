@@ -16,7 +16,9 @@ def sus_to_usc():
 
 def sus_to_leveldata():
     score = sus.load(file)
-    LevelData.pjsekai.export(path2, score)
+    LevelData.chart_cyanvas.export(path2, score, as_compressed=True)
+    LevelData.chart_cyanvas.export(path2, score, as_compressed=False)
+    # LevelData.pjsekai.export(path2, score)
 
 
 path = "test.sus"
@@ -25,11 +27,17 @@ path2 = "LevelData"
 
 sus_to_leveldata()
 
-path3 = "level.scp"
+path3 = "chcy_official.scp"
 path4 = "output.scp"
 from sonolus_converters import scp
 
 scp.replace_first_level(path3, path4, path2 + ".gz")
+
+# path3 = "level.scp"
+# path4 = "output.scp"
+# from sonolus_converters import scp
+
+# scp.replace_first_level(path3, path4, path2 + ".gz")
 
 # path = "LevelData_Official_Extracted"
 # file = open(path, "r", encoding="utf8")

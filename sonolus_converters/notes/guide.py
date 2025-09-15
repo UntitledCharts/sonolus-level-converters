@@ -1,6 +1,17 @@
 from dataclasses import dataclass, field
 from typing import Literal, List
 
+colors = {
+    "neutral": 0,
+    "red": 1,
+    "green": 2,
+    "blue": 3,
+    "yellow": 4,
+    "purple": 5,
+    "cyan": 6,
+    "black": 7,
+}
+
 
 @dataclass
 class GuidePoint:
