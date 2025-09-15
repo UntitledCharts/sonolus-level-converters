@@ -9,6 +9,7 @@ Any file type listed here supports conversions between and from.
 # Partial Support
 Any file type listed here will have some support.
 - `pjsekai LevelData` - Exporting: everything except guides
+- `chart_cyanvas LevelData` - Exporting: everything except slides
 
 # ToDo
 - pjsekai LevelData (from, fix guides)
