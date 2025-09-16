@@ -13,7 +13,7 @@ from ...notes.bpm import Bpm
 from ...notes.timescale import TimeScaleGroup, TimeScalePoint
 from ...notes.single import Single
 from ...notes.slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
-from ...notes.guide import Guide, GuidePoint, colors
+from ...notes.guide import Guide, GuidePoint
 
 from ...archetypes import EngineArchetypeName, EngineArchetypeDataName
 from ...level import LevelData, LevelDataEntity
@@ -170,10 +170,24 @@ def export(path: str, score: Score, as_compressed: bool = True):
         entities.extend(ts_group_entities)
         entities.extend(ts_change_entities)
 
-    # --- Handlers ---
     directions = {"left": -1, "up": 0, "right": 1}
     eases = {"outin": -2, "out": -1, "linear": 0, "in": 1, "inout": 2}
     slide_starts = {"tap": 0, "trace": 1, "none": 2}
+    colors = {
+        "neutral": 0,
+        "red": 1,
+        "green": 2,
+        "blue": 3,
+        "yellow": 4,
+        "purple": 5,
+        "cyan": 6,
+        "black": 7,
+    }
+    fades = {
+        "in": 2,
+        "out": 0,
+        "none": 1,
+    }
 
     def handle_bpm(obj: Bpm):
         return Intermediate(
@@ -455,7 +469,7 @@ def export(path: str, score: Score, as_compressed: bool = True):
                     "Guide",
                     {
                         "color": colors[obj.color],
-                        "fade": obj.fade,
+                        "fade": fades[obj.fade],
                         "ease": eases[head.ease],
                         "startLane": start.lane,
                         "startSize": start.size,
