@@ -214,6 +214,24 @@ class Score:
     metadata: MetaData
     notes: list[Bpm | TimeScaleGroup | Single | Slide | Guide]
 
+    def sort_by_beat(self):
+        self.notes = sorted(
+            self.notes,
+            key=lambda x: (
+                x.beat
+                if hasattr(x, "beat")
+                else (
+                    x.connections[0].beat
+                    if hasattr(x, "connections")
+                    else (
+                        x.midpoints[0].beat
+                        if hasattr(x, "midpoints")
+                        else x.changes[0].beat
+                    )
+                )
+            ),
+        )
+
     # フェードなしガイドの中継点を生成する
     def add_point_without_fade(self):
         for note in self.notes:

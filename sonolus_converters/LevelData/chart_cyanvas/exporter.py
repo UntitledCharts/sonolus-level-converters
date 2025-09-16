@@ -24,7 +24,8 @@ class Intermediate:
     archetype: str
     data: Dict[str, Union[float, "Intermediate", bool, str]]
     sim: bool
-    timeScaleGroup: Optional[int]
+    timeScaleGroup: Optional[int] = None
+    ref: Optional[str] = None
 
 
 def _remove_none(data):
@@ -42,41 +43,38 @@ def _remove_none(data):
 def export(path: str, score: Score, as_compressed: bool = True):
     if not any(isinstance(note, Bpm) for note in score.notes):
         score.notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
+    score.sort_by_beat()
 
     entities: List[LevelDataEntity] = []
-    time_to_intermediates: Dict[float, List[Intermediate]] = defaultdict(list)
-    intermediate_to_ref: Dict[int, str] = {}
-    intermediate_to_entity: Dict[int, LevelDataEntity] = {}
-    i = 0
+    intermediate_entities: Dict[int, LevelDataEntity] = {}  # intermediate.ref -> entity
+    time_to_intermediates: Dict[Union[float, int], List[Intermediate]] = (
+        {}
+    )  # beat -> list of intermediate
+    ref_counter = 0
 
     def get_ref(intermediate: Intermediate) -> str:
-        nonlocal i
-        key = id(intermediate)
-        if key in intermediate_to_ref:
-            return intermediate_to_ref[key]
-        ref = base36.dumps(i)
-        i += 1
-        intermediate_to_ref[key] = ref
-        entity = intermediate_to_entity.get(key)
-        if entity:
-            entity.name = ref
-        return ref
+        if intermediate.ref is not None:
+            return intermediate.ref
+        nonlocal ref_counter
+        intermediate.ref = base36.dumps(ref_counter)
+        ref_counter += 1
+        return intermediate.ref
 
     def append(intermediate: Intermediate):
-        key = id(intermediate)
-        entity = LevelDataEntity(archetype=intermediate.archetype, data=[])
+        # Ensure intermediate has a unique ref
+        ref = get_ref(intermediate)
+
+        entity = LevelDataEntity(archetype=intermediate.archetype, data=[], name=ref)
+        entities.append(entity)
+        intermediate_entities[ref] = entity
+
+        # Should it generate a simline?
         if intermediate.sim:
             beat = intermediate.data.get(EngineArchetypeDataName.Beat)
-            if not isinstance(beat, (int, float)):
+            if type(beat) not in (int, float):
                 raise ValueError("Unexpected beat")
-            time_to_intermediates[beat].append(intermediate)
 
-        ref = intermediate_to_ref.get(key)
-        if ref:
-            entity.name = ref
-
-        intermediate_to_entity[key] = entity
-        entities.append(entity)
+            time_to_intermediates.setdefault(beat, []).append(intermediate)
 
         for name, value in intermediate.data.items():
             if isinstance(value, (int, float)):
@@ -119,7 +117,7 @@ def export(path: str, score: Score, as_compressed: bool = True):
                         {"name": EngineArchetypeDataName.Beat, "value": change.beat},
                         {
                             "name": "timeScale",
-                            "value": (
+                            "value": float(
                                 0.000001 if change.timeScale == 0 else change.timeScale
                             ),
                         },
@@ -161,8 +159,8 @@ def export(path: str, score: Score, as_compressed: bool = True):
             LevelDataEntity(
                 archetype="TimeScaleChange",
                 data=[
-                    {"name": EngineArchetypeDataName.Beat, "value": 0},
-                    {"name": "timeScale", "value": 1},
+                    {"name": EngineArchetypeDataName.Beat, "value": 0.0},
+                    {"name": "timeScale", "value": 1.0},
                     {"name": "timeScaleGroup", "ref": "tsg:0"},
                 ],
                 name="tsc:0:0",
@@ -228,7 +226,10 @@ def export(path: str, score: Score, as_compressed: bool = True):
         connections = list(obj.connections)
         beats = sorted(c.beat for c in connections)
         min_beat, max_beat = beats[0], beats[-1]
-        start = max(math.ceil(min_beat * 2) / 2, math.floor(min_beat / 0.5 + 1) * 0.5)
+        start = max(
+            math.ceil(min_beat / 0.5) * 0.5,
+            math.floor(min_beat / 0.5 + 1) * 0.5,
+        )
         num_steps = int((max_beat - start) / 0.5)
 
         # Generate beats
@@ -262,6 +263,7 @@ def export(path: str, score: Score, as_compressed: bool = True):
         # XXX: inout is probably best converted as out
         # XXX: outin is probably best converted as in
         # XXX: ideal situation is to put an attach note halfway through and combine ease but pain
+        # XXX: the notes here are for loading ChCy and converting to, .sus or .usc
 
     def handle_slide(obj: Slide):
         cis: List[ConnectionIntermediate] = []
@@ -393,9 +395,10 @@ def export(path: str, score: Score, as_compressed: bool = True):
                     archetype,
                     {EngineArchetypeDataName.Beat: connection.beat},
                     sim=False,
-                    timeScaleGroup=getattr(connection, "timeScaleGroup", None),
                 )
                 ci.ease = connection.ease
+                if archetype != "IgnoredSlideTickNote":
+                    ci.timeScaleGroup = connection.timeScaleGroup
 
                 cis.append(ci)
                 attaches.append(ci)
@@ -424,7 +427,6 @@ def export(path: str, score: Score, as_compressed: bool = True):
                         "startType": slide_starts[start_type],
                     },
                     sim=False,
-                    timeScaleGroup=None,
                 )
             )
 
@@ -512,6 +514,14 @@ def export(path: str, score: Score, as_compressed: bool = True):
 
     entities = [asdict(entity) for entity in entities]
     _remove_none(entities)
+
+    # # Debug: detect duplicate entity names
+    # from collections import Counter
+
+    # names = [e.get("name") for e in entities if e.get("name") is not None]
+    # dup = [name for name, count in Counter(names).items() if count > 1]
+    # if dup:
+    #     raise RuntimeError(f"Duplicate entity names found: {dup}")
 
     leveldata: LevelData = {
         "bgmOffset": -score.metadata.waveoffset,

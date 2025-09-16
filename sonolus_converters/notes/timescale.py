@@ -19,5 +19,5 @@ class TimeScaleGroup:
     def insert(self, index: int, time_scale: TimeScalePoint):
         self.changes.insert(index, time_scale)
 
-    def get_sort_number(self) -> int:
+    def get_sus_sort_number(self) -> int:
         return 2

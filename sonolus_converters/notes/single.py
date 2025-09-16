@@ -10,7 +10,7 @@ class Damage:
     timeScaleGroup: float
     type: str = "damage"
 
-    def get_sort_number(self) -> int:
+    def get_sus_sort_number(self) -> int:
         return 3
 
 
@@ -25,5 +25,5 @@ class Single:
     direction: Literal["left", "up", "right"] | None = None
     type: str = "single"
 
-    def get_sort_number(self) -> int:
+    def get_sus_sort_number(self) -> int:
         return 3

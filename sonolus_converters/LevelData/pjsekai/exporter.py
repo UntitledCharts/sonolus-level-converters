@@ -21,6 +21,7 @@ class Intermediate:
     archetype: str
     data: Dict[str, Union[float, "Intermediate", None]]
     sim: bool
+    ref: Optional[str] = None
 
 
 def _remove_none(data):
@@ -40,45 +41,35 @@ def export(path: str, score: Score, as_compressed: bool = True):
         score.notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
 
     entities: List[LevelDataEntity] = []
-    intermediate_refs: Dict[int, str] = {}  # id(intermediate) -> ref string
-    intermediate_entities: Dict[int, Dict] = {}  # id(intermediate) -> entity
+    intermediate_entities: Dict[int, LevelDataEntity] = {}  # intermediate.ref -> entity
     time_to_intermediates: Dict[Union[float, int], List[Intermediate]] = (
         {}
     )  # beat -> list of intermediate
-    ref_counter = 0
+    ref_counter = 1
 
     def get_ref(intermediate: Intermediate) -> str:
+        if intermediate.ref is not None:
+            return intermediate.ref
         nonlocal ref_counter
-        key = id(intermediate)
-        if key in intermediate_refs:
-            return intermediate_refs[key]
-        ref = base36.dumps(ref_counter)
+        intermediate.ref = base36.dumps(ref_counter)
         ref_counter += 1
-        intermediate_refs[key] = ref
-        entity = intermediate_entities.get(key)
-        if entity:
-            entity.name = ref
-        return ref
+        return intermediate.ref
 
     def append(intermediate: Intermediate):
-        key = id(intermediate)
-        entity = LevelDataEntity(archetype=intermediate.archetype, data=[])
+        # Ensure intermediate has a unique ref
+        ref = get_ref(intermediate)
 
-        # should it generate a simline?
+        entity = LevelDataEntity(archetype=intermediate.archetype, data=[], name=ref)
+        entities.append(entity)
+        intermediate_entities[ref] = entity
+
+        # Should it generate a simline?
         if intermediate.sim:
             beat = intermediate.data.get(EngineArchetypeDataName.Beat)
             if type(beat) not in (int, float):
                 raise ValueError("Unexpected beat")
 
-            # make list if not there then append intermediate
             time_to_intermediates.setdefault(beat, []).append(intermediate)
-
-        ref = intermediate_refs.get(key)
-        if ref:
-            entity.name = ref
-
-        intermediate_entities[key] = entity
-        entities.append(entity)
 
         for name, value in intermediate.data.items():
             if value is None:
@@ -223,7 +214,7 @@ def export(path: str, score: Score, as_compressed: bool = True):
 
             @dataclass
             class ConnectionIntermediate(Intermediate):
-                ease: Optional[Literal["out", "linear", "in"]]
+                ease: Optional[Literal["out", "linear", "in"]] = None
 
             cis: List[ConnectionIntermediate] = []
             joints: List[ConnectionIntermediate] = []
@@ -367,6 +358,9 @@ def export(path: str, score: Score, as_compressed: bool = True):
                     # connection.judgeType == "trace" doesn't exist
                     # replaced with "if False"
                     # CriticalSlideTraceNote and NormalSlideTraceNote aren't a thing lol
+                    # Instead, they are properly loaded from sus/usc as a separate trace note
+                    # XXX: loading from exporter, convert these notes into separate trace notes
+                    # XXX: replace with a attach tick with same settings
                     ci = ConnectionIntermediate(
                         archetype=(
                             "CriticalSlideTraceNote"

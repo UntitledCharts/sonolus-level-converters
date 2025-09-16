@@ -7,5 +7,5 @@ class Bpm:
     bpm: float
     type: str = "bpm"
 
-    def get_sort_number(self) -> int:
+    def get_sus_sort_number(self) -> int:
         return 1

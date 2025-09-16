@@ -240,7 +240,7 @@ def load(fp: TextIO) -> Score:
                 direction=direction,
             )
         )
-    notes.sort(key=lambda x: x.get_sort_number())
+    notes.sort(key=lambda x: x.get_sus_sort_number())
 
     metadata = MetaData(
         title=sus_score.metadata.title,
