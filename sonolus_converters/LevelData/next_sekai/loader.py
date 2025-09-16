@@ -9,28 +9,16 @@ from ...notes.single import Single
 from ...notes.slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
 from ...notes.guide import Guide, GuidePoint
 
-from ...archetypes import EngineArchetypeName, EngineArchetypeDataName
+from ...notes.engine.archetypes import EngineArchetypeName, EngineArchetypeDataName
 
 
 def load(fp: IO) -> Score:
-    raise NotImplementedError("NextSekai support loading is too hard...")
-    """Load a next_sekai LevelData file and convert it to a Score object."""
-    # check first 2 bytes of possible gzip
-    start = fp.peek(2) if hasattr(fp, "peek") else fp.read(2)
-    if not hasattr(fp, "peek"):
-        fp.seek(0)  # set pointer back to start
-    if start[:2] == b"\x1f\x8b":  # GZIP magic number
-        with gzip.GzipFile(fileobj=fp, mode="rb") as gz:
-            leveldata = json.load(gz)
-    else:
-        leveldata = json.load(fp)
-
-    metadata = MetaData(
-        title="",
-        artist="",
-        designer="",
-        waveoffset=leveldata.get("bgmOffset", 0),
-        requests=["ticks_per_beat 480"],
+    # NOTE: for those attempting this
+    # you are free to add more values and note types
+    # however, make sure you map them to something normal in every other exporter!
+    # this can be as simple as making a function to replace any super extended features
+    # for example, any down flicks -> omni up flicks
+    # or, deleting fake notes entirely
+    raise NotImplementedError(
+        "Feel free to open a pull request and implement! MMW4CC USC -> PySekai/NextSekai LevelData"
     )
-
-    notes = []

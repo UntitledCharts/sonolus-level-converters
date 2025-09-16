@@ -3,6 +3,10 @@ from dataclasses import asdict
 from ..notes.score import Score
 from ..notes.bpm import Bpm
 
+from pathlib import Path
+import io
+from typing import Dict, List, Union, Optional, Callable, Literal, IO
+
 
 def _remove_none(data):
     if isinstance(data, dict):
@@ -16,7 +20,9 @@ def _remove_none(data):
             _remove_none(obj)
 
 
-def export(path: str, score: Score):
+def export(
+    path: Union[str, Path, io.BytesIO, io.StringIO, io.TextIOBase], score: Score
+):
     if not any(isinstance(note, Bpm) for note in score.notes):
         score.notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
     notes = [asdict(i) for i in score.notes]
@@ -27,5 +33,15 @@ def export(path: str, score: Score):
         "version": 2,
     }
 
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(usc_data, f, indent=4, ensure_ascii=False)
+    if isinstance(path, (str, Path)):
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(usc_data, f, indent=4, ensure_ascii=False)
+    elif isinstance(path, (io.StringIO, io.TextIOBase)):
+        json.dump(usc_data, path, indent=4, ensure_ascii=False)
+    elif isinstance(path, io.BytesIO):
+        json_text = json.dumps(usc_data, indent=4, ensure_ascii=False)
+        path.write(json_text.encode("utf-8"))
+    else:
+        raise TypeError(f"Unsupported path type: {type(path)}")

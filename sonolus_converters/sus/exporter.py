@@ -1,5 +1,9 @@
 import math
 
+from pathlib import Path
+import io
+from typing import Dict, List, Union, Optional, Callable, Literal, IO
+
 import custom_sus_io as csus
 from typing import cast
 from .. import __version__
@@ -29,7 +33,9 @@ def usc_notesize_to_sus_notesize(size: float) -> int:
     return int(math.ceil(size * 2))
 
 
-def export(path: str, score: Score):
+def export(
+    path: Union[str, Path, io.BytesIO, io.StringIO, io.TextIOBase], score: Score
+):
     metadata = score.metadata
     notes = score.notes
     taps = []
@@ -554,5 +560,18 @@ def export(path: str, score: Score):
         space=False,
     )
 
-    with open(path, "w", encoding="UTF-8") as f:
-        f.write(sus_text)
+    if isinstance(path, (str, Path)):
+        path = Path(path)
+        path.parent.mkdir(
+            parents=True, exist_ok=True
+        )  # optional: ensure directory exists
+        with path.open("w", encoding="utf-8") as f:
+            f.write(sus_text)
+    elif isinstance(path, (io.StringIO, io.TextIOBase)):
+        # file-like text object
+        path.write(sus_text)
+    elif isinstance(path, io.BytesIO):
+        # write UTF-8 bytes
+        path.write(sus_text.encode("utf-8"))
+    else:
+        raise TypeError(f"Unsupported path type: {type(path)}")

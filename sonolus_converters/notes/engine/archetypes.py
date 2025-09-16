@@ -1,6 +1,7 @@
 class EngineArchetypeName:
     BpmChange = "#BPM_CHANGE"
     TimeScaleChange = "#TIMESCALE_CHANGE"
+    TimeScaleGroup = "#TIMESCALE_GROUP"
 
 
 class EngineArchetypeDataName:

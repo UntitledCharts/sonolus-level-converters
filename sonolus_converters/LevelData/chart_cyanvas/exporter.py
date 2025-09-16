@@ -1,9 +1,10 @@
 import json
 import gzip
 from dataclasses import dataclass, asdict
-from collections import defaultdict
+from pathlib import Path
+import io
+from typing import Dict, List, Union, Optional, Callable, Literal, IO
 import math
-from typing import Dict, List, Union, Optional, Callable, Literal
 
 import base36
 
@@ -15,8 +16,8 @@ from ...notes.single import Single
 from ...notes.slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
 from ...notes.guide import Guide, GuidePoint
 
-from ...archetypes import EngineArchetypeName, EngineArchetypeDataName
-from ...level import LevelData, LevelDataEntity
+from ...notes.engine.archetypes import EngineArchetypeName, EngineArchetypeDataName
+from ...notes.engine.level import LevelData, LevelDataEntity
 
 
 @dataclass
@@ -40,7 +41,11 @@ def _remove_none(data):
             _remove_none(obj)
 
 
-def export(path: str, score: Score, as_compressed: bool = True):
+def export(
+    path: Union[str, Path, bytes, io.BytesIO, IO[bytes]],
+    score: Score,
+    as_compressed: bool = True,
+):
     if not any(isinstance(note, Bpm) for note in score.notes):
         score.notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
     score.sort_by_beat()
@@ -542,10 +547,26 @@ def export(path: str, score: Score, as_compressed: bool = True):
         "entities": entities,
     }
 
-    if not as_compressed:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(leveldata, f, indent=4, ensure_ascii=False)
-    else:
-        data = json.dumps(leveldata, ensure_ascii=False, separators=(",", ":"))
-        with gzip.open(f"{path}.gz", "wb") as f:
-            f.write(data.encode("utf-8"))
+    if isinstance(path, (str, Path)):
+        path = Path(path)
+        if not as_compressed:
+            with path.open("w", encoding="utf-8") as f:
+                json.dump(leveldata, f, indent=4, ensure_ascii=False)
+        else:
+            with gzip.open(f"{path}.gz", "wb") as f:
+                data = json.dumps(
+                    leveldata, ensure_ascii=False, separators=(",", ":")
+                ).encode("utf-8")
+                f.write(data)
+    elif isinstance(path, io.BytesIO) or (
+        hasattr(path, "write") and callable(path.write)
+    ):
+        if not as_compressed:
+            json_text = json.dumps(leveldata, indent=4, ensure_ascii=False)
+            path.write(json_text.encode("utf-8"))
+        else:
+            data = json.dumps(
+                leveldata, ensure_ascii=False, separators=(",", ":")
+            ).encode("utf-8")
+            with gzip.GzipFile(fileobj=path, mode="wb", mtime=0) as f:
+                f.write(data)

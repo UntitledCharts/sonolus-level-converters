@@ -9,7 +9,7 @@ from ...notes.single import Single
 from ...notes.slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
 from ...notes.guide import Guide, GuidePoint
 
-from ...archetypes import EngineArchetypeName, EngineArchetypeDataName
+from ...notes.engine.archetypes import EngineArchetypeName, EngineArchetypeDataName
 
 
 def load(fp: IO) -> Score:
@@ -19,7 +19,7 @@ def load(fp: IO) -> Score:
     if not hasattr(fp, "peek"):
         fp.seek(0)  # set pointer back to start
     if start[:2] == b"\x1f\x8b":  # GZIP magic number
-        with gzip.GzipFile(fileobj=fp, mode="rb") as gz:
+        with gzip.GzipFile(fileobj=fp, mode="rb", mtime=0) as gz:
             leveldata = json.load(gz)
     else:
         leveldata = json.load(fp)
