@@ -7,17 +7,17 @@ import re
 
 
 def detect(data: Union[os.PathLike, IO[bytes], bytes]):
-    if isinstance(data, os.PathLike):  # more Pythonic way to check for PathLike
+    if isinstance(data, os.PathLike):
         with open(data, "rb") as f:
             data = f.read()
-    elif isinstance(data, IO):  # check for IO[bytes] specifically
+    elif isinstance(data, IO):
         data = data.read()
 
     leveldata = None
     sus = None
     usc = None
 
-    # Check if the first two bytes correspond to GZIP magic number
+    # haha gzip
     if data[:2] == b"\x1f\x8b":
         sus = False
         try:
