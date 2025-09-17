@@ -44,14 +44,15 @@ def export(
     as_compressed: bool = True,
 ):
     """
-    Automatically replaces extended eases and guide colors.
+    Automatically replaces extended eases and guide colors, deleting fake notes.
 
     If you want to define your custom color map for replacing, run the .replace_extended_guide_colors with your own map.
     """
-    if not any(isinstance(note, Bpm) for note in score.notes):
-        score.notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
     score.replace_extended_ease()
     score.replace_extended_guide_colors()
+    score.delete_fake_notes()
+    if not any(isinstance(note, Bpm) for note in score.notes):
+        score.notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
 
     entities: List[LevelDataEntity] = []
     intermediate_entities: Dict[int, LevelDataEntity] = {}  # intermediate.ref -> entity

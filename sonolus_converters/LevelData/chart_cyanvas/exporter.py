@@ -46,6 +46,10 @@ def export(
     score: Score,
     as_compressed: bool = True,
 ):
+    """
+    Automatically deletes fake notes.
+    """
+    score.delete_fake_notes()
     if not any(isinstance(note, Bpm) for note in score.notes):
         score.notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
     score.sort_by_beat()

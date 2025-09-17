@@ -214,6 +214,15 @@ class Score:
     metadata: MetaData
     notes: list[Bpm | TimeScaleGroup | Single | Slide | Guide]
 
+    def delete_fake_notes(self):
+        notes = []
+        for note in self.notes:
+            if hasattr(note, "fake") and note.fake:
+                pass
+            else:
+                notes.append(note)
+        self.notes = notes
+
     def replace_extended_guide_colors(
         self,
         color_map: dict = {

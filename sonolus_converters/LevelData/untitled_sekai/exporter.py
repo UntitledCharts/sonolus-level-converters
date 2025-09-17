@@ -46,6 +46,13 @@ def export(
     score: Score,
     as_compressed: bool = True,
 ):
+    """
+    Automatically replaces extended eases.
+    """
+    score.replace_extended_ease() # XXX: they don't support inout or outin? According to their commits on usctool-custom
+
+    # XXX: support isdummy/fake notes on export
+
     if not any(isinstance(note, Bpm) for note in score.notes):
         score.notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
     score.sort_by_beat()

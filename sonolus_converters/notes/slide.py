@@ -40,6 +40,7 @@ class SlideEndPoint:
 @dataclass
 class Slide:
     critical: bool
+    fake: bool = False  # isdummy for UntitledSekai
     connections: List[Union[SlideStartPoint, SlideRelayPoint, SlideEndPoint]] = field(
         default_factory=list
     )

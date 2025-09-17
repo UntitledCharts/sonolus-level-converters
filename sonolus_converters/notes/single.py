@@ -7,6 +7,7 @@ class Damage:
     beat: float
     lane: float
     size: float
+    fake: bool = False
     timeScaleGroup: float
     type: str = "damage"
 
@@ -20,6 +21,7 @@ class Single:
     critical: bool
     lane: float
     size: float
+    fake: bool = False  # isdummy for UntitledSekai
     timeScaleGroup: float
     trace: bool
     direction: Literal["left", "up", "right"] | None = None
