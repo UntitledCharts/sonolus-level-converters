@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import gzip
+from itertools import pairwise
 from math import floor
 from pathlib import Path
 import io
@@ -119,8 +120,8 @@ def export(
         group_entity = Entity("#TIMESCALE_GROUP", {})
         entities.append(group_entity)
         timescale_group_entities.append(group_entity)
-        last_entity = group_entity
-        for change in group.changes:
+        last_entity = None
+        for change in sorted(group.changes, key=lambda c: c.beat):
             new_entity = Entity(
                 "#TIMESCALE_CHANGE",
                 {
@@ -131,7 +132,10 @@ def export(
                     "#TIMESCALE_EASE": 0,
                 },
             )
-            last_entity["next"] = new_entity
+            if last_entity is None:
+                group_entity["first"] = new_entity
+            else:
+                last_entity["next"] = new_entity
             last_entity = new_entity
             entities.append(new_entity)
 
@@ -176,9 +180,9 @@ def export(
         sim_line_eligible_notes.append(entity)
 
     for slide in slide_notes:
-        prev_joint: Entity | None = None
-        prev_note: Entity | None = None
-        head_note: Entity | None = None
+        prev_joint_entity: Entity | None = None
+        prev_note_entity: Entity | None = None
+        head_note_entity: Entity | None = None
         queued_attach_notes: list[Entity] = []
         connectors: list[Entity] = []
         connections = sorted(slide.connections, key=lambda n: n.beat)
@@ -219,7 +223,7 @@ def export(
                             if note.judgeType == "trace":
                                 name_parts.append("Trace")
                             elif note.judgeType == "normal":
-                                name_parts.append("Tap")
+                                name_parts.append("Release")
                             else:
                                 assert_never(note.judgeType)
                         else:
@@ -250,6 +254,10 @@ def export(
                             name_parts.append("Tick")
                         else:
                             name_parts = ["TransientHiddenTick"]
+                    else:
+                        assert_never(note.type)
+                case _:
+                    assert_never(note)
             name_parts.append("Note")
             name = "".join(name_parts)
             entity = Entity(
@@ -274,25 +282,25 @@ def export(
             entities.append(entity)
             if is_sim_line_eligible:
                 sim_line_eligible_notes.append(entity)
-            if head_note is None:
-                head_note = entity
-            entity["activeHead"] = head_note
+            if head_note_entity is None:
+                head_note_entity = entity
+            entity["activeHead"] = head_note_entity
             if is_attached:
                 queued_attach_notes.append(entity)
             else:
-                if prev_joint is None:
+                if prev_joint_entity is None:
                     assert not queued_attach_notes
                 else:
                     for attach in queued_attach_notes:
-                        attach["attachHead"] = prev_joint
+                        attach["attachHead"] = prev_joint_entity
                         attach["attachTail"] = entity
                     queued_attach_notes.clear()
-                    while next_hidden_tick_beat <= entity["#BEAT"]:
+                    while next_hidden_tick_beat < entity["#BEAT"]:
                         hidden_tick = Entity(
                             "TransientHiddenTickNote",
                             {
                                 "#BEAT": next_hidden_tick_beat,
-                                "#TIMESCALE_GROUP": 0,
+                                "#TIMESCALE_GROUP": timescale_group_entities[0],
                                 "lane": entity["lane"],
                                 "size": entity["size"],
                                 "direction": 0,
@@ -301,8 +309,8 @@ def export(
                                 "isSeparator": 0,
                                 "segmentKind": 1,
                                 "segmentAlpha": 0,
-                                "activeHead": head_note,
-                                "attachHead": prev_joint,
+                                "activeHead": head_note_entity,
+                                "attachHead": prev_joint_entity,
                                 "attachTail": entity,
                             },
                         )
@@ -311,29 +319,29 @@ def export(
                     connector_entity = Entity(
                         "Connector",
                         {
-                            "head": prev_joint,
+                            "head": prev_joint_entity,
                             "tail": entity,
                         },
                     )
                     entities.append(connector_entity)
                     connectors.append(connector_entity)
-                prev_joint = entity
-            if prev_note is not None:
-                prev_note["next"] = entity
-            prev_note = entity
+                prev_joint_entity = entity
+            if prev_note_entity is not None:
+                prev_note_entity["next"] = entity
+            prev_note_entity = entity
         assert not queued_attach_notes
-        assert head_note is not None
-        assert prev_joint is not None
-        for connector in connectors:
-            connector["segmentHead"] = head_note
-            connector["segmentTail"] = prev_joint
-            connector["activeHead"] = head_note
-            connector["activeTail"] = prev_joint
+        assert head_note_entity is not None
+        assert prev_joint_entity is not None
+        for connector_entity in connectors:
+            connector_entity["segmentHead"] = head_note_entity
+            connector_entity["segmentTail"] = prev_joint_entity
+            connector_entity["activeHead"] = head_note_entity
+            connector_entity["activeTail"] = prev_joint_entity
 
     for guide in guide_notes:
         connections = sorted(guide.midpoints, key=lambda n: n.beat)
-        prev_note: Entity | None = None
-        head_note: Entity | None = None
+        prev_note_entity: Entity | None = None
+        head_note_entity: Entity | None = None
         connectors = []
         for note in connections:
             entity = Entity(
@@ -354,36 +362,59 @@ def export(
                 },
             )
             entities.append(entity)
-            if head_note is None:
-                head_note = entity
-            if prev_note is not None:
-                connector = Entity(
+            if head_note_entity is None:
+                head_note_entity = entity
+            if prev_note_entity is not None:
+                connector_entity = Entity(
                     "Connector",
                     {
-                        "head": prev_note,
+                        "head": prev_note_entity,
                         "tail": entity,
                     },
                 )
-                entities.append(connector)
-                connectors.append(connector)
-                prev_note["next"] = entity
-            prev_note = entity
-        assert head_note is not None
-        assert prev_note is not None
-        for connector in connectors:
-            connector["segmentHead"] = head_note
-            connector["segmentTail"] = prev_note
-            connector["activeHead"] = head_note
-            connector["activeTail"] = prev_note
+                entities.append(connector_entity)
+                connectors.append(connector_entity)
+                prev_note_entity["next"] = entity
+            prev_note_entity = entity
+        assert head_note_entity is not None
+        assert prev_note_entity is not None
+        for connector_entity in connectors:
+            connector_entity["segmentHead"] = head_note_entity
+            connector_entity["segmentTail"] = prev_note_entity
+            connector_entity["activeHead"] = head_note_entity
+            connector_entity["activeTail"] = prev_note_entity
         match guide.fade:
             case "in":
-                head_note["segmentAlpha"] = 0
+                head_note_entity["segmentAlpha"] = 0
             case "out":
-                prev_note["segmentAlpha"] = 0
+                prev_note_entity["segmentAlpha"] = 0
             case "none":
                 pass
             case _:
                 assert_never(guide.fade)
+
+    groups = []
+    last_group = []
+    for note_entity in sorted(
+        sim_line_eligible_notes, key=lambda e: (e["#BEAT"], e["lane"])
+    ):
+        if not last_group or abs(note_entity["#BEAT"] - last_group[0]["#BEAT"]) < 1e-2:
+            last_group.append(note_entity)
+        else:
+            groups.append(last_group)
+            last_group = [note_entity]
+    if last_group:
+        groups.append(last_group)
+    for group in groups:
+        for a, b in pairwise(group):
+            entity = Entity(
+                "SimLine",
+                {
+                    "left": a,
+                    "right": b,
+                },
+            )
+            entities.append(entity)
 
     leveldata = {
         "bgmOffset": score.metadata.waveoffset,
