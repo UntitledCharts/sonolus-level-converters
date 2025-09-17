@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Damage:
     beat: float
     lane: float
@@ -15,7 +15,7 @@ class Damage:
         return 3
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Single:
     beat: float
     critical: bool
