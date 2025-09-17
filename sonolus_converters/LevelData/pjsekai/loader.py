@@ -168,7 +168,7 @@ def load(fp: IO) -> Score:
                                 **common_args,
                                 critical=point.get("critical", False),
                                 ease=point.get("ease"),
-                                judgeType=point.get("judgeType")
+                                judgeType=point.get("judgeType"),
                             )
                         )
                     elif pt_type in ("tick", "attach"):
@@ -177,7 +177,7 @@ def load(fp: IO) -> Score:
                                 **common_args,
                                 type=pt_type,
                                 critical=point.get("critical", False),
-                                ease=point.get("ease")
+                                ease=point.get("ease"),
                             )
                         )
                     elif pt_type == "end":
@@ -186,7 +186,7 @@ def load(fp: IO) -> Score:
                                 **common_args,
                                 critical=point.get("critical", False),
                                 judgeType=point.get("judgeType"),
-                                direction=point.get("direction")
+                                direction=point.get("direction"),
                             )
                         )
                 notes.append(slide)

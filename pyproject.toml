@@ -1,0 +1,25 @@
+[project]
+name = "sonolus_converters"
+version = "0.1.0"
+description = "Convert between Sonolus LevelData files!"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "GPLv3"}
+authors = [{ name = "YumYummity", email = "yumyummity@gmail.com" }]
+
+dependencies = [
+    "dataclasses-json>=0.5.6,<0.6.0",
+    "base36>=0.1.1,<0.2.0",
+    "single-source>=0.2.0,<0.3.0",
+    "marshmallow-enum>=1.5.1,<2.0.0",
+    "typing-inspect>=0.4.0",
+    "marshmallow>=3.3.0,<4.0.0",
+    "packaging>=17.0",
+    "mypy-extensions>=0.3.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["sonolus_converters", "custom_sus_io"]
+
+[tool.setuptools]
+include-package-data = true
