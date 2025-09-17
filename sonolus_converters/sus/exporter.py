@@ -36,6 +36,13 @@ def usc_notesize_to_sus_notesize(size: float) -> int:
 def export(
     path: Union[str, Path, io.BytesIO, io.StringIO, io.TextIOBase], score: Score
 ):
+    """
+    Automatically replaces extended eases and guide colors.
+
+    If you want to define your custom color map for replacing, run the .replace_extended_guide_colors with your own map.
+    """
+    score.replace_extended_ease()
+    score.replace_extended_guide_colors()
     metadata = score.metadata
     notes = score.notes
     taps = []

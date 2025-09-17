@@ -6,7 +6,7 @@ from typing import Literal, List, Union
 class SlideStartPoint:
     beat: float
     critical: bool
-    ease: Literal["in", "out", "linear"]
+    ease: Literal["outin", "out", "linear", "in", "inout"]
     judgeType: Literal["normal", "trace", "none"]
     lane: float
     size: float
@@ -17,7 +17,7 @@ class SlideStartPoint:
 @dataclass
 class SlideRelayPoint:
     beat: float
-    ease: Literal["in", "out", "linear"]
+    ease: Literal["outin", "out", "linear", "in", "inout"]
     lane: float
     size: float
     timeScaleGroup: float

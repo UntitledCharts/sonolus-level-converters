@@ -214,6 +214,45 @@ class Score:
     metadata: MetaData
     notes: list[Bpm | TimeScaleGroup | Single | Slide | Guide]
 
+    def replace_extended_guide_colors(
+        self,
+        color_map: dict = {
+            "neutral": "green",
+            "red": "yellow",
+            "green": "green",
+            "blue": "green",
+            "yellow": "yellow",
+            "purple": "yellow",
+            "cyan": "green",
+            "black": "green",
+        },
+    ):
+        for note in self.notes:
+            if not isinstance(note, Guide):
+                continue
+            note.color = color_map[note.color]
+
+    def replace_extended_ease(self):
+        # XXX: Probably better to add an attach tick halfway, then switch ease
+        # If anyone wants to PR this, feel free!
+        ease_map = {
+            "outin": "in",
+            "out": "out",
+            "linear": "linear",
+            "in": "in",
+            "inout": "out",
+        }
+        for note in self.notes:
+            if not isinstance(note, (Slide, Guide)):
+                continue
+            if isinstance(note, Slide):
+                for c in note.connections:
+                    if hasattr(c, "ease"):
+                        c.ease = ease_map[c.ease]
+            if isinstance(note, Guide):
+                for m in note.midpoints:
+                    m.ease = ease_map[m.ease]
+
     def sort_by_beat(self):
         self.notes = sorted(
             self.notes,

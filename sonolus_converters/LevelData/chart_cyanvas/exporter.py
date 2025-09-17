@@ -279,10 +279,6 @@ def export(
     @dataclass
     class ConnectionIntermediate(Intermediate):
         ease: Optional[Literal["outin", "out", "linear", "in", "inout"]] = None
-        # XXX: inout is probably best converted as out
-        # XXX: outin is probably best converted as in
-        # XXX: ideal situation is to put an attach note halfway through and combine ease but pain
-        # XXX: the notes here are for loading ChCy and converting to, .sus or .usc
 
     def handle_slide(obj: Slide):
         cis: List[ConnectionIntermediate] = []

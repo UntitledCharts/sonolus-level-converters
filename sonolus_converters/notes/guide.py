@@ -5,7 +5,7 @@ from typing import Literal, List
 @dataclass
 class GuidePoint:
     beat: float
-    ease: Literal["in", "out", "linear"]
+    ease: Literal["outin", "out", "linear", "in", "inout"]
     lane: float
     size: float
     timeScaleGroup: float
@@ -13,7 +13,9 @@ class GuidePoint:
 
 @dataclass
 class Guide:
-    color: Literal["green", "yellow"]
+    color: Literal[
+        "neutral", "red", "green", "blue", "yellow", "purple", "cyan", "black"
+    ]
     fade: Literal["in", "out", "none"]
     midpoints: List[GuidePoint] = field(default_factory=list)
     type: str = "guide"
