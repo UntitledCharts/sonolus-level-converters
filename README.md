@@ -1,6 +1,8 @@
 # sonolus-level-converters
 Convert between Sonolus LevelData (as well as MMW4CC's USC and Sekai's SUS)
 
+Requires `Python >= 3.10`
+
 # Fully Supported
 Any file type listed here supports conversions between and from.
 - `.usc`
@@ -10,17 +12,18 @@ Any file type listed here supports conversions between and from.
 Any file type listed here will have some support.
 - `pjsekai LevelData` - Exporting only
 - `chart_cyanvas LevelData` - Exporting only
+- `next_sekai LevelData` - Exporting only
+- `untitled_sekai LevelData` - Exporting only
+
+# Utils/Helpers
+- Strip ChCy Extended Features
 
 # ToDo
-- pjsekai LevelData (from, fix guides)
-- Chart Cyanvas LevelData (to and from)
-- PySekai LevelData (to)
+- pjsekai LevelData (from)
+- Chart Cyanvas LevelData (from)
 - PySekai LevelData (from) (is this possible??)
 - Strip extended features:
     - Strip pysekai extended (to convert to chcy)
-    - Strip chcy extended (to convert to base game)
-        - colors
-- Fix typing for color, and convert to base game correctly (USCs support more than YELLOW/GREEN color, while base game supports more)
 - Sonolus USC file (I don't actually believe this is needed, low priority)
 
 # All Sekai LevelDatas, and their servers (including level packers)
