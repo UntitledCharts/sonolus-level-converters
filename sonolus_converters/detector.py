@@ -6,7 +6,10 @@ import io
 import re
 
 
-def detect(data: Union[os.PathLike, IO[bytes], bytes]):
+def detect(data: Union[os.PathLike, IO[bytes], bytes]) -> tuple:
+    """
+    valid, is_sus, is_usc, is_leveldata, leveldata_type
+    """
     if isinstance(data, os.PathLike):
         with open(data, "rb") as f:
             data = f.read()
@@ -61,19 +64,14 @@ def detect(data: Union[os.PathLike, IO[bytes], bytes]):
             else:
                 sus = False
 
+    leveldata_type = None
     if leveldata:
-        print("Detected level data")
         if not any(e.get("archetype") == "TimeScaleGroup" for e in data["entities"]):
             extended = False
         else:
             extended = True
         if extended:
-            print("Detected a extended LevelData: ChCy, US, or NextSekai/PySekai")
+            leveldata_type = "chcy" or "us" or "nextsekai"
         else:
-            print("Detected a normal LevelData: PJSekai")
-    elif usc:
-        print("Detected MMW4CC .usc file")
-    elif sus:
-        print("Detected .sus file")
-    else:
-        print("File type not detected")
+            leveldata_type = "base"
+    return any([sus, usc, leveldata]), sus, usc, leveldata, leveldata_type
