@@ -1,7 +1,7 @@
-from LevelData import *
-import sus
-import usc
-import scp
-import detector
+from .LevelData import *
+from . import sus
+from . import usc
+from . import scp
+from .detector import detect
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
