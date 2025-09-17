@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["sonolus_converters", "custom_sus_io"]
+where = ["."]
 
 [tool.setuptools]
 include-package-data = true
