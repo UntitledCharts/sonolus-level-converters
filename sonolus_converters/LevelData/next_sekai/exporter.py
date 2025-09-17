@@ -7,7 +7,7 @@ from itertools import pairwise
 from math import floor
 from pathlib import Path
 import io
-from typing import Union, IO, assert_never
+from typing import Union, IO, NoReturn
 
 from ...notes import (
     Bpm,
@@ -22,6 +22,10 @@ from ...notes import (
 from ...notes.score import Score
 
 
+def assert_never(arg: NoReturn) -> NoReturn:
+    raise AssertionError("Expected code to be unreachable")
+
+
 class Entity:
     def __init__(self, archetype: str, data: dict[str, int | float | Entity]):
         self.archetype = archetype
@@ -33,9 +37,11 @@ class Entity:
             "name": self.name,
             "archetype": self.archetype,
             "data": [
-                {"name": k, "value": v}
-                if not isinstance(v, Entity)
-                else {"name": k, "ref": v.name}
+                (
+                    {"name": k, "value": v}
+                    if not isinstance(v, Entity)
+                    else {"name": k, "ref": v.name}
+                )
                 for k, v in self.data.items()
             ],
         }

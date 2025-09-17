@@ -49,7 +49,7 @@ def export(
     """
     Automatically replaces extended eases.
     """
-    score.replace_extended_ease() # XXX: they don't support inout or outin? According to their commits on usctool-custom
+    score.replace_extended_ease()  # XXX: they don't support inout or outin? According to their commits on usctool-custom
 
     # XXX: support isdummy/fake notes on export
 
