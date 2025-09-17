@@ -6,7 +6,7 @@ from typing import Dict, List, Union, Optional, Callable, Literal, IO
 
 import custom_sus_io as csus
 from typing import cast
-from .. import __version__
+from ..version import __version__
 from ..notes.score import Score
 from ..notes.bpm import Bpm
 from ..notes.timescale import TimeScaleGroup, TimeScalePoint
