@@ -66,7 +66,9 @@ def detect(data: Union[os.PathLike, IO[bytes], bytes]) -> tuple:
 
     leveldata_type = None
     if leveldata:
-        if not any(e.get("archetype") == "TimeScaleGroup" for e in data["entities"]):
+        if not any(
+            e.get("archetype") == "TimeScaleGroup" for e in level_data["entities"]
+        ):
             extended = False
         else:
             extended = True
