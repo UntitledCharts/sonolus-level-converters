@@ -216,9 +216,18 @@ def load(fp: TextIO) -> Score:
 
     # タップ、フリック系
     for note in sorted(sus_score.taps, key=lambda x: x.tick):
-        if note.type == 4:  # SKILL ACTIVATIONS (or damage notes in Chunithm)
+        if (
+            note.type == SusNoteType.Tap.SKILL
+        ):  # (4) SKILL ACTIVATIONS (or damage notes in Chunithm)
             # should NOT be loaded FROM a sus file.
             continue
+        # fever start/end events
+        if (
+            note.lane == 15
+            and note.width == 1
+            and note.type in [SusNoteType.Tap.TAP, SusNoteType.Tap.C_TAP]
+        ):
+            continue  # don't load them
         samepos_direction = _search_samepos_note(
             (note.tick, note.lane), sus_score.directionals, remove=True
         )
