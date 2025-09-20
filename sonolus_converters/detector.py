@@ -6,11 +6,11 @@ import io
 import re
 
 
-def detect(data: Union[os.PathLike, IO[bytes], bytes]) -> tuple:
+def detect(data: Union[os.PathLike, IO[bytes], bytes, str]) -> tuple:
     """
     valid, is_sus, is_usc, is_leveldata, leveldata_type
     """
-    if isinstance(data, os.PathLike):
+    if isinstance(data, os.PathLike) or type(data) == str:
         with open(data, "rb") as f:
             data = f.read()
     elif isinstance(data, IO):

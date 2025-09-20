@@ -40,8 +40,10 @@ def export(
             json.dump(usc_data, f, indent=4, ensure_ascii=False)
     elif isinstance(path, (io.StringIO, io.TextIOBase)):
         json.dump(usc_data, path, indent=4, ensure_ascii=False)
+        path.seek(0)
     elif isinstance(path, io.BytesIO):
         json_text = json.dumps(usc_data, indent=4, ensure_ascii=False)
         path.write(json_text.encode("utf-8"))
+        path.seek(0)
     else:
         raise TypeError(f"Unsupported path type: {type(path)}")

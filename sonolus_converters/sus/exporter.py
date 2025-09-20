@@ -578,8 +578,10 @@ def export(
     elif isinstance(path, (io.StringIO, io.TextIOBase)):
         # file-like text object
         path.write(sus_text)
+        path.seek(0)
     elif isinstance(path, io.BytesIO):
         # write UTF-8 bytes
         path.write(sus_text.encode("utf-8"))
+        path.seek(0)
     else:
         raise TypeError(f"Unsupported path type: {type(path)}")

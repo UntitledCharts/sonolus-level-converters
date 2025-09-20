@@ -570,3 +570,4 @@ def export(
             ).encode("utf-8")
             with gzip.GzipFile(fileobj=path, mode="wb", mtime=0) as f:
                 f.write(data)
+        path.seek(0)

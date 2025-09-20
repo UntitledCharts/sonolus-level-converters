@@ -423,7 +423,7 @@ def export(
             entities.append(entity)
 
     leveldata = {
-        "bgmOffset": score.metadata.waveoffset,
+        "bgmOffset": -score.metadata.waveoffset,
         "entities": [e.export() for e in entities],
     }
 
@@ -450,3 +450,4 @@ def export(
             ).encode("utf-8")
             with gzip.GzipFile(fileobj=path, mode="wb", mtime=0) as f:
                 f.write(data)
+        path.seek(0)
