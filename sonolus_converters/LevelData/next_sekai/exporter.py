@@ -423,7 +423,7 @@ def export(
             entities.append(entity)
 
     leveldata = {
-        "bgmOffset": -score.metadata.waveoffset,
+        "bgmOffset": score.metadata.waveoffset,
         "entities": [e.export() for e in entities],
     }
 

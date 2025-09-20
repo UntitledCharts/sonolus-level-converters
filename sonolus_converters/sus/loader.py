@@ -246,7 +246,7 @@ def load(fp: TextIO) -> Score:
         title=sus_score.metadata.title,
         artist=sus_score.metadata.artist,
         designer=sus_score.metadata.designer,
-        waveoffset=sus_score.metadata.waveoffset,
+        waveoffset=-sus_score.metadata.waveoffset,
         requests=sus_score.metadata.requests,
     )
 

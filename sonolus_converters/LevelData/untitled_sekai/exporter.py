@@ -550,7 +550,7 @@ def export(
     #     raise RuntimeError(f"Duplicate entity names found: {dup}")
 
     leveldata: LevelData = {
-        "bgmOffset": -score.metadata.waveoffset,
+        "bgmOffset": score.metadata.waveoffset,
         "entities": entities,
     }
 
