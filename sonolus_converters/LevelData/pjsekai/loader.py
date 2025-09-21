@@ -32,79 +32,38 @@ def load(fp: IO) -> Score:
         requests=["ticks_per_beat 480"],
     )
 
-    notes = []
+    # Restore metadata (if present in future, currently only bgmOffset)
+    metadata = MetaData(
+        title="",
+        artist="",
+        designer="",
+        waveoffset=leveldata.get("bgmOffset", 0),
+        requests=["ticks_per_beat 480"],
+    )
 
+    notes = []
     directions = {
         -1: "left",
         0: "up",
         1: "right",
     }
-
     eases = {
         -1: "out",
         0: "linear",
         1: "in",
     }
-
-    def reverse_single_archetype(archetype: str):
-        critical = False
-        trace = False
-
-        if "Critical" in archetype:
-            critical = True
-
-        if "Trace" in archetype:
-            trace = True
-
-        return critical, trace
-
-    def reverse_slide_archetype(archetype: str):
-        ignored = False  # won't add combo
-        hidden = False  # shown/not shown
-        critical = False
-        trace = False
-        attached = False
-
-        active = False  # guide?
-
-        type: Literal["tick", "connector", "end", "start"]
-        if "SlideEnd" in archetype:
-            type = "end"
-        elif "SlideStart" in archetype:
-            type = "start"
-        elif "SlideTick" in archetype:
-            type = "tick"
-        elif "SlideConnector" in archetype:
-            type = "connector"
-
-        if "Critical" in archetype:
-            critical = True
-        if "Trace" in archetype:
-            trace = True
-        if "Attached" in archetype:
-            attached = True
-
-        if "Active" in archetype:
-            active = True
-
-        if "Ignored" in archetype:
-            ignored = True
-
-        if "Hidden" in archetype:
-            hidden = True
-
-        return ignored, hidden, critical, trace, attached, active, type
-
     has_bpm = False
+
     for entity in leveldata.get("entities", []):
         archetype = entity.get("archetype")
         data = {d["name"]: d.get("value", d.get("ref")) for d in entity.get("data", [])}
 
-        if archetype == "SimLine":
-            continue  # disregard, this is just the generated "white line" to show notes that come at the same time
+        # Skip SimLine entities
 
-        # BPM
-        elif archetype == EngineArchetypeName.BpmChange:
+        if archetype == "SimLine":
+            continue
+
+        if archetype == EngineArchetypeName.BpmChange:
             notes.append(
                 Bpm(
                     beat=round(data[EngineArchetypeDataName.Beat], 6),
@@ -112,8 +71,6 @@ def load(fp: IO) -> Score:
                 )
             )
             has_bpm = True
-
-        # TimeScale
         elif archetype == EngineArchetypeName.TimeScaleChange:
             group = TimeScaleGroup()
             group.append(
@@ -123,39 +80,27 @@ def load(fp: IO) -> Score:
                 )
             )
             notes.append(group)
-
-        # Single / Tap / Flick / Trace Notes
-        elif "Note" in archetype and "Slide" not in archetype:
-            critical, trace = reverse_single_archetype(archetype)
-            notes.append(
-                Single(
-                    beat=round(data[EngineArchetypeDataName.Beat], 6),
-                    critical=critical,
-                    lane=data.get("lane", 0),
-                    size=data.get("size", 1),
-                    trace=trace,
-                    direction=(
-                        directions[data["direction"]] if data.get("direction") else None
-                    ),
-                    timeScaleGroup=0,
+        elif "connections" in data:
+            connections = data["connections"]
+            if archetype == "IgnoredSlideTickNote":
+                guide = Guide(
+                    color=data.get("color", "yellow"), fade=data.get("fade", 0)
                 )
-            )
-
-        # Slide and guide notes
-        elif "Slide" in archetype:
-            ignored, hidden, critical, trace, attached, active, type = (
-                reverse_slide_archetype(archetype)
-            )
-            if hidden:
-                continue  # generated during export
-            raise NotImplementedError(
-                "Guides/Holds loading not implemented for pjsekai loader."
-            )
-            if active:
-                slide = Slide(critical=critical)
-                connections = data.get("connections", [])
                 for point in connections:
-                    pt_type = point.get("type")
+                    guide.append(
+                        GuidePoint(
+                            beat=round(point.get(EngineArchetypeDataName.Beat, 0), 6),
+                            ease=point.get("ease"),
+                            lane=point.get("lane", 0),
+                            size=point.get("size", 1),
+                            timeScaleGroup=0,
+                        )
+                    )
+                notes.append(guide)
+            else:
+                slide = Slide(critical="Critical" in archetype)
+                for point in connections:
+                    pt_type = point.get("type", "tick")
                     common_args = dict(
                         beat=round(point.get(EngineArchetypeDataName.Beat, 0), 6),
                         lane=point.get("lane", 0),
@@ -190,23 +135,43 @@ def load(fp: IO) -> Score:
                             )
                         )
                 notes.append(slide)
-
-            # Guide notes
-            else:
-                guide = Guide(color=data.get("color"), fade=data.get("fade"))
-                for point in data.get("midpoints", []):
-                    guide.append(
-                        GuidePoint(
-                            beat=round(point[EngineArchetypeDataName.Beat], 6),
-                            ease=point.get("ease"),
-                            lane=point.get("lane", 0),
-                            size=point.get("size", 1),
-                            timeScaleGroup=0,
-                        )
+        elif "midpoints" in data:
+            guide = Guide(color=data.get("color", "yellow"), fade=data.get("fade", 0))
+            for point in data["midpoints"]:
+                guide.append(
+                    GuidePoint(
+                        beat=round(point.get(EngineArchetypeDataName.Beat, 0), 6),
+                        ease=point.get("ease"),
+                        lane=point.get("lane", 0),
+                        size=point.get("size", 1),
+                        timeScaleGroup=0,
                     )
-                notes.append(guide)
+                )
+            notes.append(guide)
+        elif archetype in [
+            "NormalTapNote",
+            "CriticalTapNote",
+            "NormalFlickNote",
+            "CriticalFlickNote",
+            "NormalTraceNote",
+            "CriticalTraceNote",
+        ]:
+            critical = "Critical" in archetype
+            trace = "Trace" in archetype
+            notes.append(
+                Single(
+                    beat=round(data[EngineArchetypeDataName.Beat], 6),
+                    critical=critical,
+                    lane=data.get("lane", 0),
+                    size=data.get("size", 1),
+                    trace=trace,
+                    direction=(
+                        directions[data["direction"]] if data.get("direction") else None
+                    ),
+                    timeScaleGroup=0,
+                )
+            )
 
     if not has_bpm:
         notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
-
     return Score(metadata=metadata, notes=notes)
