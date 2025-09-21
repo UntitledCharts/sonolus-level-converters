@@ -8,7 +8,7 @@ import re
 
 def detect(data: Union[os.PathLike, IO[bytes], bytes, str]) -> tuple:
     """
-    valid, is_sus, is_usc, is_leveldata, leveldata_type
+    valid, is_sus, is_usc, is_leveldata, is_compressed, leveldata_type
     """
     if isinstance(data, os.PathLike) or type(data) == str:
         with open(data, "rb") as f:
@@ -19,6 +19,7 @@ def detect(data: Union[os.PathLike, IO[bytes], bytes, str]) -> tuple:
     leveldata = None
     sus = None
     usc = None
+    compressed = False
 
     # haha gzip
     if data[:2] == b"\x1f\x8b":
@@ -27,6 +28,7 @@ def detect(data: Union[os.PathLike, IO[bytes], bytes, str]) -> tuple:
             with gzip.GzipFile(fileobj=io.BytesIO(data), mode="rb", mtime=0) as gz:
                 leveldata = True
                 level_data = json.load(gz)
+                compressed = True
         except (gzip.BadGzipFile, json.JSONDecodeError) as e:
             leveldata = False
     else:
@@ -46,22 +48,24 @@ def detect(data: Union[os.PathLike, IO[bytes], bytes, str]) -> tuple:
         except (UnicodeDecodeError, json.JSONDecodeError):
             usc = False
             leveldata = False
+            try:
+                metadata = []
+                scoredata = []
+                for line in data.decode().splitlines():
+                    if not line.startswith("#"):
+                        continue
+                    line = line.strip()
+                    match = re.match(r"^#(\w+):\s*(.*)$", line)
+                    if match:
+                        scoredata.append(match.groups())
+                    else:
+                        metadata.append(tuple(line.split(" ", 1)))
 
-            metadata = []
-            scoredata = []
-            for line in data.decode().splitlines():
-                if not line.startswith("#"):
-                    continue
-                line = line.strip()
-                match = re.match(r"^#(\w+):\s*(.*)$", line)
-                if match:
-                    scoredata.append(match.groups())
+                if metadata and scoredata:
+                    sus = True
                 else:
-                    metadata.append(tuple(line.split(" ", 1)))
-
-            if metadata and scoredata:
-                sus = True
-            else:
+                    sus = False
+            except UnicodeDecodeError:
                 sus = False
 
     leveldata_type = None
@@ -76,4 +80,4 @@ def detect(data: Union[os.PathLike, IO[bytes], bytes, str]) -> tuple:
             leveldata_type = "chcy" or "us" or "nextsekai"
         else:
             leveldata_type = "base"
-    return any([sus, usc, leveldata]), sus, usc, leveldata, leveldata_type
+    return any([sus, usc, leveldata]), sus, usc, leveldata, compressed, leveldata_type
