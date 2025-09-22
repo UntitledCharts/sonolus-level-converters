@@ -1,10 +1,16 @@
-from dataclasses import dataclass
-from .metadata import MetaData
-from .bpm import Bpm
-from .timescale import TimeScaleGroup
-from .single import Single
-from .slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
-from .guide import Guide, GuidePoint
+from dataclasses import dataclass, asdict
+from .metadata import MetaData, validate_metadata_dict_values
+from .bpm import Bpm, validate_bpm_dict_values
+from .timescale import TimeScaleGroup, validate_timescale_dict_values
+from .single import Single, validate_single_dict_values
+from .slide import (
+    Slide,
+    SlideStartPoint,
+    SlideRelayPoint,
+    SlideEndPoint,
+    validate_slide_dict_values,
+)
+from .guide import Guide, GuidePoint, validate_guide_dict_values
 
 
 # 1tickをbeatに変換
@@ -209,10 +215,67 @@ def _shift_single(note: Single, split_tmp_notes: list[Single | Slide | Guide]):
                 note.beat += BEAT_PER_TICK
 
 
+def usc_remove_fake_field(notes: list) -> list:
+    for note in notes:
+        note.pop("fake", 0)
+        if "connectors" in note:
+            for c in note["connectors"]:
+                c.pop("fake", 0)
+        if "midpoints" in note:
+            for m in note["midpoints"]:
+                m.pop("fake", 0)
+
+
+class InvalidNoteError(Exception):
+    def __init__(self, note: dict, t: str, error_message: str):
+        self.note = note
+        self.error_message = error_message
+        super().__init__(f"Invalid {t} note: {self.note}. Error: {self.error_message}")
+
+
 @dataclass
 class Score:
     metadata: MetaData
     notes: list[Bpm | TimeScaleGroup | Single | Slide | Guide]
+
+    def validate(self) -> bool:
+        metadata_validation = validate_metadata_dict_values(self.metadata.__dict__)
+        if metadata_validation:
+            note_dict, error_message = metadata_validation
+            raise InvalidNoteError(note_dict, "MetaData", error_message)
+
+        for note in self.notes:
+            note_dict = asdict(note)
+            if isinstance(note, Bpm):
+                validation_result = validate_bpm_dict_values(note_dict)
+                if validation_result:
+                    note_dict, error_message = validation_result
+                    raise InvalidNoteError(note_dict, "BPM", error_message)
+            elif isinstance(note, TimeScaleGroup):
+                validation_result = validate_timescale_dict_values(note_dict)
+                if validation_result:
+                    note_dict, error_message = validation_result
+                    raise InvalidNoteError(note_dict, "TimeScaleGroup", error_message)
+            elif isinstance(note, Single):
+                validation_result = validate_single_dict_values(note_dict)
+                if validation_result:
+                    note_dict, error_message = validation_result
+                    raise InvalidNoteError(note_dict, "Single", error_message)
+            elif isinstance(note, Slide):
+                validation_result = validate_slide_dict_values(note_dict)
+                if validation_result:
+                    note_dict, error_message = validation_result
+                    raise InvalidNoteError(note_dict, "Slide", error_message)
+            elif isinstance(note, Guide):
+                validation_result = validate_guide_dict_values(note_dict)
+                if validation_result:
+                    note_dict, error_message = validation_result
+                    raise InvalidNoteError(note_dict, "Guide", error_message)
+            else:
+                raise InvalidNoteError(
+                    note_dict, "UNKNOWN NOTE TYPE", "Invalid note type in list."
+                )
+        return True
 
     def delete_fake_notes(self):
         notes = []

@@ -1,4 +1,5 @@
-import json, gzip
+import json
+import gzip
 from typing import IO, List, Union
 
 from ...notes.score import Score
@@ -138,19 +139,32 @@ def load(fp: IO) -> Score:
 
     from collections import defaultdict
 
+    # Helper to get the data map for an entity (value or ref)
+    def entity_data_map(entity_raw: dict) -> dict:
+        m = {}
+        for d in entity_raw.get("data", []):
+            if "value" in d:
+                m[d["name"]] = d["value"]
+            elif "ref" in d:
+                m[d["name"]] = d["ref"]
+        return m
+
+    # collect connector entities (raw) and store parsed data map alongside
     connector_raws = [
         e
         for e in slide_related_raw
         if e.get("archetype") and "Connector" in e.get("archetype")
     ]
 
+    # store list of tuples (raw_entity, data_map) keyed by (start_ref, end_ref)
     connectors_by_slide = defaultdict(list)
     for conn in connector_raws:
-        start_ref = get_field_raw(conn, "start")
-        end_ref = get_field_raw(conn, "end")
+        data_map = entity_data_map(conn)
+        start_ref = data_map.get("start")
+        end_ref = data_map.get("end")
         # only group if both refs exist
         if start_ref and end_ref:
-            connectors_by_slide[(start_ref, end_ref)].append(conn)
+            connectors_by_slide[(start_ref, end_ref)].append((conn, data_map))
 
     # helper to build a joint/point object from a raw entity
     def raw_to_point(raw):
@@ -159,10 +173,9 @@ def load(fp: IO) -> Score:
         beat = round(beat, 6) if isinstance(beat, (int, float)) else None
         lane = get_field_raw(raw, "lane")
         size = get_field_raw(raw, "size")
+        # NOTE: joint-level ease is a fallback — connector entities usually carry the real ease
         ease_val = get_field_raw(raw, "ease")
-        if "SlideStart" in arch:
-            print(raw, ease_val)
-        ease_name = eases.get(ease_val) if ease_val is not None else "linear"
+        ease_name = eases.get(ease_val) if ease_val is not None else None
         critical = "Critical" in arch
         # judgeType: guess from archetype
         if "Trace" in arch:
@@ -184,16 +197,29 @@ def load(fp: IO) -> Score:
 
     # Now iterate slide groups and create Slide or Guide objects
     for (start_ref, end_ref), conns in connectors_by_slide.items():
-        # Determine if connectors are active (presence of "Active" in archetype)
-        first_conn_arch = conns[0].get("archetype", "")
+        # conns is list of (conn_raw_entity, data_map)
+        first_conn_raw, first_conn_map = conns[0]
+        first_conn_arch = first_conn_raw.get("archetype", "")
         active = "Active" in first_conn_arch
         slide_critical = "Critical" in first_conn_arch
 
+        # Build map of connector metadata keyed by (head_ref, tail_ref)
+        # connector_meta[(head_ref, tail_ref)] = {"ease_val": ..., "arch": ...}
+        connector_meta = {}
+        for conn_raw, conn_map in conns:
+            head_ref = conn_map.get("head")
+            tail_ref = conn_map.get("tail")
+            ease_val = conn_map.get("ease")  # numeric -1/0/1 in exporter
+            connector_meta[(head_ref, tail_ref)] = {
+                "ease_val": ease_val,
+                "arch": conn_raw.get("archetype", ""),
+            }
+
         # Collect joint refs used by connectors (head/tail), and include start & end refs themselves
         joint_refs = []
-        for c in conns:
-            head = get_field_raw(c, "head")
-            tail = get_field_raw(c, "tail")
+        for conn_raw, conn_map in conns:
+            head = conn_map.get("head")
+            tail = conn_map.get("tail")
             if head:
                 joint_refs.append(head)
             if tail:
@@ -201,8 +227,9 @@ def load(fp: IO) -> Score:
         # include start/end themselves (they are refs to start/end entities)
         joint_refs.append(start_ref)
         joint_refs.append(end_ref)
-        # unique and preserve beats ordering
+        # unique and preserve insertion order
         unique_joint_refs = list(dict.fromkeys(joint_refs))
+
         # expand to raw entities and sort by beat (some hidden ticks may only have beat)
         joint_raws = []
         for ref in unique_joint_refs:
@@ -213,26 +240,48 @@ def load(fp: IO) -> Score:
 
         # build connection objects in beat order
         connections_list = []
-        for ref, info in joint_raws:
+        n_joints = len(joint_raws)
+        for idx, (ref, info) in enumerate(joint_raws):
             arch = info["arch"]
-            typ = None
+
+            # Determine connector-provided ease:
+            # 1) try incoming connector (prev -> ref)
+            # 2) else try outgoing connector (ref -> next)
+            # 3) else fall back to joint ease or "linear"
+            ease_name_for_this = None
+
+            if idx > 0:
+                prev_ref = joint_raws[idx - 1][0]
+                incoming = connector_meta.get((prev_ref, ref))
+                if incoming:
+                    ease_name_for_this = eases.get(incoming.get("ease_val"))
+            if ease_name_for_this is None and idx < n_joints - 1:
+                next_ref = joint_raws[idx + 1][0]
+                outgoing = connector_meta.get((ref, next_ref))
+                if outgoing:
+                    ease_name_for_this = eases.get(outgoing.get("ease_val"))
+
+            # joint fallback (rare): use info["ease"] if present
+            if ease_name_for_this is None:
+                if info.get("ease") is not None:
+                    ease_name_for_this = info.get("ease")
+                else:
+                    ease_name_for_this = "linear"  # last resort default
+
+            # Create slide points using the resolved ease where appropriate
             if "Start" in arch or "StartNote" in arch:
-                typ = "start"
-                # SlideStartPoint(type="start", beat=..., lane=..., size=..., ease=..., judgeType=..., critical=...)
                 sp = SlideStartPoint(
                     type="start",
                     beat=info["beat"],
                     lane=info["lane"] if info["lane"] is not None else 0,
                     size=info["size"] if info["size"] is not None else 1,
-                    ease=info["ease"],
+                    ease=ease_name_for_this,
                     judgeType=info["judgeType"],
                     critical=info["critical"],
                     timeScaleGroup=0,
                 )
                 connections_list.append(sp)
             elif "End" in arch or "EndNote" in arch:
-                typ = "end"
-                # extract direction
                 raw = ref_to_raw.get(ref, {})
                 dir_val = get_field_raw(raw, "direction")
                 dir_name = directions.get(dir_val) if dir_val is not None else None
@@ -275,7 +324,11 @@ def load(fp: IO) -> Score:
                     beat=info["beat"],
                     lane=info["lane"] if info["lane"] is not None else 0,
                     size=info["size"] if info["size"] is not None else 1,
-                    ease=info["ease"],
+                    ease=(
+                        ease_name_for_this
+                        if ease_name_for_this is not None
+                        else "linear"
+                    ),
                     timeScaleGroup=0,
                     critical=(
                         None if "IgnoredSlideTickNote" in arch else info["critical"]
@@ -288,7 +341,11 @@ def load(fp: IO) -> Score:
                     beat=info["beat"],
                     lane=info["lane"] if info["lane"] is not None else 0,
                     size=info["size"] if info["size"] is not None else 1,
-                    ease=info["ease"],
+                    ease=(
+                        ease_name_for_this
+                        if ease_name_for_this is not None
+                        else "linear"
+                    ),
                     timeScaleGroup=0,
                     critical=info["critical"],
                 )

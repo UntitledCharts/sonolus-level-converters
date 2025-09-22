@@ -15,6 +15,7 @@ def extract_file(zf: zipfile.ZipFile, src: str, dst: Path):
 
 class Level(TypedDict):
     title: str
+    rating: int
     score: Path
     audio: Optional[Path]
     preview: Optional[Path]
@@ -47,6 +48,7 @@ def load_levels_from_scp(
 
             out = {
                 "title": item.get("title", level_name),
+                "rating": item["rating"],
                 "audio": None,
                 "preview": None,
                 "cover": None,

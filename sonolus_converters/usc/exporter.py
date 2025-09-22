@@ -1,11 +1,11 @@
 import json
 from dataclasses import asdict
-from ..notes.score import Score
+from ..notes.score import Score, usc_remove_fake_field
 from ..notes.bpm import Bpm
 
 from pathlib import Path
 import io
-from typing import Dict, List, Union, Optional, Callable, Literal, IO
+from typing import Union
 
 
 def _remove_none(data):
@@ -27,6 +27,7 @@ def export(
         score.notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
     notes = [asdict(i) for i in score.notes]
     _remove_none(notes)
+    usc_remove_fake_field(notes)
 
     usc_data = {
         "usc": {"objects": notes, "offset": score.metadata.waveoffset},
