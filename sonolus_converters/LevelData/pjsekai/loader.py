@@ -160,7 +160,9 @@ def load(fp: IO) -> Score:
         lane = get_field_raw(raw, "lane")
         size = get_field_raw(raw, "size")
         ease_val = get_field_raw(raw, "ease")
-        ease_name = eases.get(ease_val) if ease_val is not None else None
+        if "SlideStart" in arch:
+            print(raw, ease_val)
+        ease_name = eases.get(ease_val) if ease_val is not None else "linear"
         critical = "Critical" in arch
         # judgeType: guess from archetype
         if "Trace" in arch:
@@ -168,7 +170,7 @@ def load(fp: IO) -> Score:
         elif "IgnoredSlideTickNote" in arch:
             judgeType = "none"
         else:
-            judgeType = None
+            judgeType = "normal"
 
         return {
             "arch": arch,
@@ -225,6 +227,7 @@ def load(fp: IO) -> Score:
                     ease=info["ease"],
                     judgeType=info["judgeType"],
                     critical=info["critical"],
+                    timeScaleGroup=0,
                 )
                 connections_list.append(sp)
             elif "End" in arch or "EndNote" in arch:
@@ -238,10 +241,10 @@ def load(fp: IO) -> Score:
                     beat=info["beat"],
                     lane=info["lane"] if info["lane"] is not None else 0,
                     size=info["size"] if info["size"] is not None else 1,
-                    ease=info["ease"],
                     judgeType=info["judgeType"],
                     critical=info["critical"],
                     direction=dir_name,
+                    timeScaleGroup=0,
                 )
                 connections_list.append(ep)
             elif "HiddenSlideTickNote" in arch or "HiddenSlide" in arch:
@@ -303,12 +306,12 @@ def load(fp: IO) -> Score:
                         beat=round(c.beat, 6),
                         lane=getattr(c, "lane", 0),
                         size=getattr(c, "size", 1),
-                        ease=getattr(c, "ease", None),
+                        ease=getattr(c, "ease", "linear"),
                         timeScaleGroup=0,
                     )
                     midpoints.append(gp)
-            color = "yellow" if slide_critical else "white"
-            guide = Guide(midpoints=midpoints, color=color)
+            color = "yellow" if slide_critical else "green"
+            guide = Guide(midpoints=midpoints, color=color, fade="none")
             notes.append(guide)
             continue
 
