@@ -1,4 +1,4 @@
-from typing import Union, IO
+from typing import Union, IO, Tuple, Literal
 import os
 import gzip
 import json
@@ -6,7 +6,9 @@ import io
 import re
 
 
-def detect(data: Union[os.PathLike, IO[bytes], bytes, str]) -> tuple:
+def detect(
+    data: Union[os.PathLike, IO[bytes], bytes, str]
+) -> Tuple[bool, bool, bool, bool, bool, Literal["base", "chcy", "us", "nextsekai"]]:
     """
     valid, is_sus, is_usc, is_leveldata, is_compressed, leveldata_type
     """
@@ -24,6 +26,7 @@ def detect(data: Union[os.PathLike, IO[bytes], bytes, str]) -> tuple:
     # haha gzip
     if data[:2] == b"\x1f\x8b":
         sus = False
+        usc = False
         try:
             with gzip.GzipFile(fileobj=io.BytesIO(data), mode="rb", mtime=0) as gz:
                 leveldata = True
@@ -77,7 +80,16 @@ def detect(data: Union[os.PathLike, IO[bytes], bytes, str]) -> tuple:
         else:
             extended = True
         if extended:
-            leveldata_type = "chcy" or "us" or "nextsekai"
+            leveldata_type = "chcy"
+            ld_str = json.dumps(level_data)
+            if "isdummy" in ld_str:
+                leveldata_type = "us"
+            elif (
+                "TransientHiddenTick" in ld_str
+                or "Fake" in ld_str
+                or "segmentHead" in ld_str
+            ):  # XXX: make more robust. there's a lot more: some guide colors, down flicks
+                leveldata_type = "nextsekai"
         else:
             leveldata_type = "base"
     return any([sus, usc, leveldata]), sus, usc, leveldata, compressed, leveldata_type
