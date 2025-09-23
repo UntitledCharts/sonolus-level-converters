@@ -57,11 +57,9 @@ def load(fp: TextIO) -> Score:
                 notelist.append(
                     Single(
                         beat=round(obj["beat"], 6),
-                        critical=obj["critical"],
                         lane=obj["lane"],
                         size=obj["size"],
                         timeScaleGroup=obj["timeScaleGroup"],
-                        trace=obj["trace"],
                         type=type,
                     )
                 )
