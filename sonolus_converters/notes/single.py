@@ -5,12 +5,12 @@ from typing import Literal
 @dataclass(kw_only=True)
 class Single:
     beat: float
-    critical: bool
+    critical: bool | None = None
     lane: float
     size: float
     fake: bool = False  # isdummy for UntitledSekai
     timeScaleGroup: float
-    trace: bool
+    trace: bool | None = None
     direction: Literal["left", "up", "right"] | None = None
     type: Literal["single", "damage"] = "single"
 
