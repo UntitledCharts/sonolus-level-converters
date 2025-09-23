@@ -175,7 +175,7 @@ def load(fp: IO) -> Score:
         size = get_field_raw(raw, "size")
         # NOTE: joint-level ease is a fallback — connector entities usually carry the real ease
         ease_val = get_field_raw(raw, "ease")
-        ease_name = eases.get(ease_val) if ease_val is not None else None
+        ease_name = eases.get(ease_val) if ease_val is not None else "linear"
         critical = "Critical" in arch
         # judgeType: guess from archetype
         if "Trace" in arch:
@@ -236,6 +236,9 @@ def load(fp: IO) -> Score:
             raw = ref_to_raw.get(ref)
             if raw:
                 joint_raws.append((ref, raw_to_point(raw)))
+        # if there are less than 2 joint points, nothing meaningful to build
+        if len(joint_raws) < 2:
+            continue
         joint_raws.sort(key=lambda x: (x[1]["beat"] if x[1]["beat"] is not None else 0))
 
         # build connection objects in beat order
@@ -268,8 +271,11 @@ def load(fp: IO) -> Score:
                 else:
                     ease_name_for_this = "linear"  # last resort default
 
-            # Create slide points using the resolved ease where appropriate
-            if "Start" in arch or "StartNote" in arch:
+            is_first = idx == 0
+            is_last = idx == n_joints - 1
+
+            # If this is the first joint and it represents a non-ignored note => SlideStartPoint
+            if is_first and info.get("judgeType") != "none":
                 sp = SlideStartPoint(
                     type="start",
                     beat=info["beat"],
@@ -281,7 +287,10 @@ def load(fp: IO) -> Score:
                     timeScaleGroup=0,
                 )
                 connections_list.append(sp)
-            elif "End" in arch or "EndNote" in arch:
+                continue
+
+            # If this is the last joint and it represents a non-ignored note => SlideEndPoint
+            if is_last and info.get("judgeType") != "none":
                 raw = ref_to_raw.get(ref, {})
                 dir_val = get_field_raw(raw, "direction")
                 dir_name = directions.get(dir_val) if dir_val is not None else None
@@ -296,8 +305,12 @@ def load(fp: IO) -> Score:
                     timeScaleGroup=0,
                 )
                 connections_list.append(ep)
-            elif "HiddenSlideTickNote" in arch or "HiddenSlide" in arch:
-                pass  # these are generated on export
+                continue
+
+            # Other cases: hidden, attach, tick or ignored tick
+            if "HiddenSlideTickNote" in arch or "HiddenSlide" in arch:
+                pass  # generated on export
+
             elif (
                 "AttachedSlide" in arch
                 or "AttachedSlideTickNote" in arch
@@ -313,6 +326,7 @@ def load(fp: IO) -> Score:
                     critical=info["critical"],
                 )
                 connections_list.append(rp)
+
             elif (
                 "TickNote" in arch
                 or "SlideTick" in arch
@@ -336,6 +350,7 @@ def load(fp: IO) -> Score:
                 )
                 connections_list.append(rp)
             else:
+                # fallback: treat as a tick-relay with resolved ease
                 rp = SlideRelayPoint(
                     type="tick",
                     beat=info["beat"],

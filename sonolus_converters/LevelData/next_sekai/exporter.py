@@ -12,6 +12,7 @@ from typing import Union, IO, NoReturn
 from ...notes import (
     Bpm,
     TimeScaleGroup,
+    TimeScalePoint,
     Single,
     Slide,
     Guide,
@@ -111,6 +112,11 @@ def export(
                 guide_notes.append(entry)
             case _:
                 assert_never(entry)
+
+    if len(timescale_groups) == 0:
+        timescale_groups.append(TimeScaleGroup(changes=[TimeScalePoint(0, 1)]))
+    if len(bpm_changes) == 0:
+        bpm_changes.append(Bpm(0, 160))
 
     for bpm in bpm_changes:
         entities.append(
