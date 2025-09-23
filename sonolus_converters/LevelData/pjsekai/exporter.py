@@ -44,13 +44,14 @@ def export(
     as_compressed: bool = True,
 ):
     """
-    Automatically replaces extended eases and guide colors, deleting fake notes.
+    Automatically replaces extended eases and guide colors, deleting fake and damage notes.
 
     If you want to define your custom color map for replacing, run the .replace_extended_guide_colors with your own map.
     """
     score.replace_extended_ease()
     score.replace_extended_guide_colors()
     score.delete_fake_notes()
+    score.delete_damage_notes()
     if not any(isinstance(note, Bpm) for note in score.notes):
         score.notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
 

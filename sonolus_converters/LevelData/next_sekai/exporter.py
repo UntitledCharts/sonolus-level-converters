@@ -155,20 +155,23 @@ def export(
         name_parts = []
         if note.fake:
             name_parts.append("Fake")
-        if note.critical:
-            name_parts.append("Critical")
+        if note.type == "damage":
+            name_parts.append("Damage")
         else:
-            name_parts.append("Normal")
-        if note.direction is None:
-            if note.trace:
-                name_parts.append("Trace")
+            if note.critical:
+                name_parts.append("Critical")
             else:
-                name_parts.append("Tap")
-        else:
-            if note.trace:
-                name_parts.append("TraceFlick")
+                name_parts.append("Normal")
+            if note.direction is None:
+                if note.trace:
+                    name_parts.append("Trace")
+                else:
+                    name_parts.append("Tap")
             else:
-                name_parts.append("Flick")
+                if note.trace:
+                    name_parts.append("TraceFlick")
+                else:
+                    name_parts.append("Flick")
         name_parts.append("Note")
         name = "".join(name_parts)
         entity = Entity(
@@ -189,7 +192,8 @@ def export(
             },
         )
         entities.append(entity)
-        sim_line_eligible_notes.append(entity)
+        if note.type != "damage":
+            sim_line_eligible_notes.append(entity)
 
     for slide in slide_notes:
         prev_joint_entity: Entity | None = None

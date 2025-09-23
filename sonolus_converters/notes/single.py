@@ -3,19 +3,6 @@ from typing import Literal
 
 
 @dataclass(kw_only=True)
-class Damage:
-    beat: float
-    lane: float
-    size: float
-    fake: bool = False
-    timeScaleGroup: float
-    type: str = "damage"
-
-    def get_sus_sort_number(self) -> int:
-        return 3
-
-
-@dataclass(kw_only=True)
 class Single:
     beat: float
     critical: bool
@@ -25,30 +12,10 @@ class Single:
     timeScaleGroup: float
     trace: bool
     direction: Literal["left", "up", "right"] | None = None
-    type: str = "single"
+    type: Literal["single", "damage"] = "single"
 
     def get_sus_sort_number(self) -> int:
         return 3
-
-
-def validate_damage_dict_values(data: dict) -> tuple | None:
-    if not isinstance(data, dict):
-        return data, "Expected a dictionary for Damage"
-    if "beat" not in data or not isinstance(data["beat"], (int, float)):
-        return data, "'beat' is missing or invalid"
-    if "lane" not in data or not isinstance(data["lane"], (int, float)):
-        return data, "'lane' is missing or invalid"
-    if "size" not in data or not isinstance(data["size"], (int, float)):
-        return data, "'size' is missing or invalid"
-    if "timeScaleGroup" not in data or not isinstance(
-        data["timeScaleGroup"], (int, float)
-    ):
-        return data, "'timeScaleGroup' is missing or invalid"
-    if "fake" in data and not isinstance(data["fake"], bool):
-        return data, "'fake' should be a boolean"
-    if "type" in data and not isinstance(data["type"], str):
-        return data, "'type' should be a string"
-    return None
 
 
 def validate_single_dict_values(data: dict) -> tuple | None:

@@ -286,6 +286,15 @@ class Score:
                 notes.append(note)
         self.notes = notes
 
+    def delete_damage_notes(self):
+        notes = []
+        for note in self.notes:
+            if isinstance(note, Single) and note.type == "damage":
+                pass
+            else:
+                notes.append(note)
+        self.notes = notes
+
     def replace_extended_guide_colors(
         self,
         color_map: dict = {

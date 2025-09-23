@@ -39,8 +39,8 @@ def load(fp: TextIO) -> Score:
                 )
             notelist.append(group)
 
-        elif type == "single":
-            if "direction" in obj:
+        elif type in ["single", "damage"]:
+            if "direction" in obj and type == "single":
                 notelist.append(
                     Single(
                         beat=round(obj["beat"], 6),
@@ -50,6 +50,7 @@ def load(fp: TextIO) -> Score:
                         timeScaleGroup=obj["timeScaleGroup"],
                         trace=obj["trace"],
                         direction=obj["direction"],
+                        type="single",
                     )
                 )
             else:
@@ -61,6 +62,7 @@ def load(fp: TextIO) -> Score:
                         size=obj["size"],
                         timeScaleGroup=obj["timeScaleGroup"],
                         trace=obj["trace"],
+                        type=type,
                     )
                 )
 

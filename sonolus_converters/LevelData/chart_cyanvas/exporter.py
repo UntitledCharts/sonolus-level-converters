@@ -213,36 +213,49 @@ def export(
         return None  # handled separately above
 
     def handle_single(obj: Single):
-        inter = Intermediate(
-            archetype="CriticalTapNote" if obj.critical else "NormalTapNote",
-            data={
-                EngineArchetypeDataName.Beat: obj.beat,
-                "lane": obj.lane,
-                "size": obj.size,
-            },
-            sim=True,
-            timeScaleGroup=obj.timeScaleGroup,
-        )
-        if obj.trace:
-            inter.archetype = "CriticalTraceNote" if obj.critical else "NormalTraceNote"
-            if obj.direction:
-                if obj.direction == "none":
-                    inter.archetype = "NonDirectionalTraceFlickNote"
-                else:
+        if obj.type == "damage":
+            inter = Intermediate(
+                data={
+                    EngineArchetypeDataName.Beat: obj.beat,
+                    "lane": obj.lane,
+                    "size": obj.size,
+                },
+                sim=False,
+                timeScaleGroup=obj.timeScaleGroup,
+            )
+        else:
+            inter = Intermediate(
+                archetype="CriticalTapNote" if obj.critical else "NormalTapNote",
+                data={
+                    EngineArchetypeDataName.Beat: obj.beat,
+                    "lane": obj.lane,
+                    "size": obj.size,
+                },
+                sim=True,
+                timeScaleGroup=obj.timeScaleGroup,
+            )
+            if obj.trace:
+                inter.archetype = (
+                    "CriticalTraceNote" if obj.critical else "NormalTraceNote"
+                )
+                if obj.direction:
+                    if obj.direction == "none":
+                        inter.archetype = "NonDirectionalTraceFlickNote"
+                    else:
+                        inter.archetype = (
+                            "CriticalTraceFlickNote"
+                            if obj.critical
+                            else "NormalTraceFlickNote"
+                        )
+                        inter.data["direction"] = directions[obj.direction]
+            else:
+                if obj.direction and obj.direction != "none":
                     inter.archetype = (
-                        "CriticalTraceFlickNote"
-                        if obj.critical
-                        else "NormalTraceFlickNote"
+                        "CriticalFlickNote" if obj.critical else "NormalFlickNote"
                     )
                     inter.data["direction"] = directions[obj.direction]
-        else:
-            if obj.direction and obj.direction != "none":
-                inter.archetype = (
-                    "CriticalFlickNote" if obj.critical else "NormalFlickNote"
-                )
-                inter.data["direction"] = directions[obj.direction]
-            elif obj.direction == "none":
-                return None
+                elif obj.direction == "none":
+                    return None
         return inter
 
     def get_slide_connections(obj: Slide):

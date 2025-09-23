@@ -37,13 +37,14 @@ def export(
     path: Union[str, Path, io.BytesIO, io.StringIO, io.TextIOBase], score: Score
 ):
     """
-    Automatically replaces extended eases and guide colors, deleting fake notes.
+    Automatically replaces extended eases and guide colors, deleting fake and damage notes.
 
     If you want to define your custom color map for replacing, run the .replace_extended_guide_colors with your own map.
     """
     score.replace_extended_ease()
     score.replace_extended_guide_colors()
     score.delete_fake_notes()
+    score.delete_damage_notes()
     metadata = score.metadata
     notes = score.notes
     taps = []
