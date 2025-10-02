@@ -406,6 +406,9 @@ def load(fp: IO) -> Score:
                 rtype = (
                     "attach" if ("Attached" in arch or "Attached" in arch) else "tick"
                 )
+                rcritical = critical
+                if rtype == "tick" and arch == "HiddenSlideTickNote":
+                    rcritical = None
                 rp_ease = ease_map.get(ent_name, "linear")
                 rp = SlideRelayPoint(
                     beat=beat,
@@ -414,7 +417,7 @@ def load(fp: IO) -> Score:
                     size=size,
                     timeScaleGroup=tsg,
                     type=rtype,
-                    critical=critical,
+                    critical=rcritical,
                 )
                 relay_points.append(rp)
 
