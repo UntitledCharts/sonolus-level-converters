@@ -403,9 +403,7 @@ def load(fp: IO) -> Score:
                 tsg = _get_field(ent, "timeScaleGroup", 0)
                 if isinstance(tsg, str) and tsg.startswith("tsg:"):
                     tsg = int(tsg.split(":")[1])
-                rtype = (
-                    "attach" if ("Attached" in arch or "Attached" in arch) else "tick"
-                )
+                rtype = "attach" if ("Attached" in arch) else "tick"
                 rcritical = critical
                 if rtype == "tick" and arch == "HiddenSlideTickNote":
                     rcritical = None
