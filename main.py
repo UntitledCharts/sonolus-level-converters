@@ -1,13 +1,13 @@
 from sonolus_converters import LevelData, scp, detect, usc, sus
 from pathlib import Path
 
-levels, tmpdir = scp.load_levels_from_scp(Path("test.scp"))
+levels, tmpdir = scp.load_levels_from_scp(Path("testcc.scp"))
 
 for lvl in levels[:1]:  # Extract and convert the first LevelData to USC
     with open(lvl["score"], "rb") as f:
         b = f.read()
         f.seek(0)
-        score = LevelData.pjsekai.load(f)
+        score = LevelData.chart_cyanvas.load(f)
         score.validate()
     valid, is_sus, is_usc, is_leveldata, is_compressed, leveldata_type = detect(b)
     usc.export("test.usc", score)

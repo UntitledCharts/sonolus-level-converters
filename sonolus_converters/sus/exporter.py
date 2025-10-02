@@ -39,12 +39,15 @@ def export(
     """
     Automatically replaces extended eases and guide colors, deleting fake and damage notes.
 
+    NOTE: also deletes extended lanes! call strip_extended_lanes with replace=True if you wish to attempt automatic replacement
+
     If you want to define your custom color map for replacing, run the .replace_extended_guide_colors with your own map.
     """
     score.replace_extended_ease()
     score.replace_extended_guide_colors()
     score.delete_fake_notes()
     score.delete_damage_notes()
+    score.strip_extended_lanes()
     metadata = score.metadata
     notes = score.notes
     taps = []
