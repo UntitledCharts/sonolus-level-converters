@@ -4,7 +4,7 @@ import tempfile
 import shutil
 from pathlib import Path
 
-from typing import TypedDict, List, Optional, Tuple
+from typing import TypedDict, List, Optional, Tuple, Dict, Any
 
 
 def extract_file(zf: zipfile.ZipFile, src: str, dst: Path):
@@ -14,8 +14,7 @@ def extract_file(zf: zipfile.ZipFile, src: str, dst: Path):
 
 
 class Level(TypedDict):
-    title: str
-    rating: int
+    data: Dict[str, Any]
     score: Path
     audio: Optional[Path]
     preview: Optional[Path]
@@ -47,8 +46,7 @@ def load_levels_from_scp(
             level_name = item["name"]
 
             out = {
-                "title": item.get("title", level_name),
-                "rating": item["rating"],
+                "data": item,
                 "audio": None,
                 "preview": None,
                 "cover": None,
