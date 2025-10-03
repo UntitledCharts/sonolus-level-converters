@@ -7,11 +7,11 @@ Requires `Python >= 3.10`
 Any file type listed here supports conversions between and from.
 - `.usc`
 - `.sus`
+- `chart_cyanvas LevelData`
 
 # Partial Support
 Any file type listed here will have some support.
 - `pjsekai LevelData` - Exporting only
-- `chart_cyanvas LevelData` - Exporting only
 - `next_sekai LevelData` - Exporting only
 - `untitled_sekai LevelData` - Exporting only
 
@@ -20,7 +20,6 @@ Any file type listed here will have some support.
 
 # ToDo
 - pjsekai LevelData (from)
-- Chart Cyanvas LevelData (from)
 - PySekai LevelData (from) (is this possible??)
 - Strip extended features:
     - Strip pysekai extended (to convert to chcy)
@@ -29,12 +28,13 @@ Any file type listed here will have some support.
 # All Sekai LevelDatas, and their servers (including level packers)
 - pjsekai LevelData
     - PJSekai (sonolus.sekai.best)
-    - Potato Leaves (ptlv.sevenc7c.com)
+    - Potato Leaves Archive (ptlv.sevenc7c.com)
     - Sekai Rush (shut down)
 - Chart Cyanvas LevelData
-    - Chart Cyanvas (shut down)
-- Next Sekai / PySekai LevelData
-    - UPCOMING
+    - Chart Cyanvas Archive (cc.sevenc7c.com)
+- Next Sekai LevelData
+    - UntitledCharts (untitledcharts.com)
+    - Next Sekai (coconut.sonolus.com/next-sekai)
 - UntitledSekai LevelData
     - UntitledSekai (us.pim4n-net.com)
 
