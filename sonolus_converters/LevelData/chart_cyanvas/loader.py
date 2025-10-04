@@ -495,7 +495,6 @@ def load(fp: IO) -> Score:
         else:
             ease = _INV_EASES.get(ease_val, "linear")
 
-        # create segment node with all required points
         node = {
             "start": GuidePoint(
                 beat=data_map.get("startBeat"),
@@ -565,13 +564,13 @@ def load(fp: IO) -> Score:
     ]
 
     for start_seg in start_segments:
-        # reconstruct full ordered midpoints
         midpoints: List[GuidePoint] = [
             start_seg["start"],
             start_seg["head"],
             start_seg["tail"],
         ]
         end_point = start_seg["end"]
+
         next_key = (
             start_seg["tail"].lane,
             start_seg["tail"].size,
@@ -579,10 +578,25 @@ def load(fp: IO) -> Score:
             start_seg["tail"].timeScaleGroup,
         )
 
+        # Reconstruct full connected guide chain
         while next_key in head_to_seg:
             next_seg = head_to_seg[next_key]
+
+            # stop if the next segment is self-connected (head == tail)
+            if (
+                next_seg["head"].lane == next_seg["tail"].lane
+                and next_seg["head"].size == next_seg["tail"].size
+                and next_seg["head"].beat == next_seg["tail"].beat
+                and next_seg["head"].timeScaleGroup == next_seg["tail"].timeScaleGroup
+            ):
+                midpoints.append(next_seg["tail"])
+                end_point = next_seg["end"]
+                break
+
             midpoints.append(next_seg["tail"])
             end_point = next_seg["end"]
+
+            # advance
             next_key = (
                 next_seg["tail"].lane,
                 next_seg["tail"].size,
@@ -590,7 +604,7 @@ def load(fp: IO) -> Score:
                 next_seg["tail"].timeScaleGroup,
             )
 
-        # assemble Guide
+        # finalize the guide
         guides.append(
             Guide(
                 midpoints=midpoints + [end_point],
@@ -598,8 +612,6 @@ def load(fp: IO) -> Score:
                 fade=start_seg["fade"],
             )
         )
-
-    notes.extend(guides)
 
     # assemble score
     score = Score(metadata=metadata, notes=notes)
