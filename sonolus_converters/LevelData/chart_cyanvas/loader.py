@@ -87,7 +87,7 @@ def _is_slide_connector_archetype(archetype: str) -> bool:
 
 
 def _is_single_archetype(archetype: str) -> bool:
-    return any(x in archetype for x in ("TapNote", "FlickNote", "TraceNote"))
+    return any(x in archetype for x in ("TapNote", "FlickNote", "TraceNote", "DamageNote"))
 
 
 def _parse_tsg_index(name: str) -> Optional[int]:
