@@ -74,12 +74,7 @@ def _is_slide_end_archetype(archetype: str) -> bool:
 
 
 def _is_slide_tick_archetype(archetype: str) -> bool:
-    return (
-        "SlideTickNote" in archetype
-        or "AttachedSlideTickNote" in archetype
-        or archetype == "IgnoredSlideTickNote"
-        or archetype == "HiddenSlideTickNote"
-    )
+    return "SlideTickNote" in archetype
 
 
 def _is_slide_connector_archetype(archetype: str) -> bool:
@@ -410,6 +405,7 @@ def load(fp: IO) -> Score:
         conn_names_for_slide = [cname for cname, _ in conns_sorted]
 
         relay_points: List[SlideRelayPoint] = []
+        # process named entities (existing logic)
         for ent_name, ent in parsed.items():
             arch = ent["archetype"]
             if not _is_slide_tick_archetype(arch) or arch == "IgnoredSlideTickNote":
@@ -461,6 +457,109 @@ def load(fp: IO) -> Score:
                     critical=rcritical,
                 )
                 relay_points.append(rp)
+
+        # ALSO process unnamed tick/attach entities (previously skipped)
+        unnamed_tick_count = 0
+        for idx, ent in enumerate(unnamed_entities):
+            arch = ent.get("archetype")
+            if (
+                not arch
+                or not _is_slide_tick_archetype(arch)
+                or arch == "IgnoredSlideTickNote"
+            ):
+                continue
+
+            data_map = _entity_data_map(ent)
+            attach_ref = data_map.get("attach")
+            slide_ref = data_map.get("slide")
+            ref_names = []
+            if attach_ref:
+                ref_names.append(
+                    attach_ref.get("name")
+                    if isinstance(attach_ref, dict)
+                    else attach_ref
+                )
+            if slide_ref:
+                ref_names.append(
+                    slide_ref.get("name") if isinstance(slide_ref, dict) else slide_ref
+                )
+
+            # include if it references one of this slide's connectors, or if it matches a joint by value
+            referenced = any(rn in conn_names_for_slide for rn in ref_names if rn)
+            # also attempt matching by beat/lane/size/tsg to joint_names where possible
+            if not referenced:
+                # build a simple key to compare against joint entries (if joint entity names exist in parsed)
+                try:
+                    b = data_map.get(
+                        EngineArchetypeDataName.Beat, data_map.get("beat", None)
+                    )
+                except Exception:
+                    b = data_map.get("beat", None)
+                lane = data_map.get("lane", None)
+                size = data_map.get("size", None)
+                tsg = data_map.get("timeScaleGroup", None)
+                if isinstance(tsg, str) and tsg.startswith("tsg:"):
+                    try:
+                        tsg = int(tsg.split(":", 1)[1])
+                    except Exception:
+                        tsg = 0
+                if b is not None and lane is not None and size is not None:
+                    # compare to joint_names by fetching parsed entry for each joint and matching fields
+                    for jn in joint_names:
+                        jent = parsed.get(jn)
+                        if not jent:
+                            continue
+                        jb = _get_field(jent, EngineArchetypeDataName.Beat, None)
+                        jlane = _get_field(jent, "lane", None)
+                        jsize = _get_field(jent, "size", None)
+                        jtsg = _get_field(jent, "timeScaleGroup", None)
+                        if isinstance(jtsg, str) and str(jtsg).startswith("tsg:"):
+                            try:
+                                jtsg = int(str(jtsg).split(":", 1)[1])
+                            except Exception:
+                                jtsg = 0
+                        if jb == b and jlane == lane and jsize == size and jtsg == tsg:
+                            referenced = True
+                            break
+
+            if not referenced:
+                continue
+
+            # create a generated name for potential ease lookup (fallback to start_ease)
+            gen_name = f"__unnamed_tick_{idx}"
+
+            beat = data_map.get(EngineArchetypeDataName.Beat, data_map.get("beat", 0.0))
+            lane = data_map.get("lane", 0.0)
+            size = data_map.get("size", 0.0)
+            tsg = data_map.get("timeScaleGroup", 0)
+            if isinstance(tsg, str) and tsg.startswith("tsg:"):
+                try:
+                    tsg = int(tsg.split(":", 1)[1])
+                except Exception:
+                    tsg = 0
+            rtype = "attach" if ("Attached" in arch) else "tick"
+
+            if "Critical" in arch:
+                rcritical = True
+            elif "Normal" in arch:
+                rcritical = False
+            elif "Hidden" in arch or arch == "HiddenSlideTickNote":
+                rcritical = None
+            else:
+                rcritical = start_point.critical
+
+            rp_ease = ease_map.get(gen_name, start_ease)
+
+            rp = SlideRelayPoint(
+                beat=beat,
+                ease=rp_ease,
+                lane=lane,
+                size=size,
+                timeScaleGroup=tsg,
+                type=rtype,
+                critical=rcritical,
+            )
+            relay_points.append(rp)
 
         if not end_ref_candidate or end_ref_candidate not in parsed:
             continue
