@@ -4,3 +4,4 @@ from . import usc
 from . import scp
 from .detector import detect
 from .version import __version__
+from . import utils

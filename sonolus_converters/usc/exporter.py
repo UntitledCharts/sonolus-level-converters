@@ -3,6 +3,8 @@ from dataclasses import asdict
 from ..notes.score import Score, usc_remove_fake_field
 from ..notes.bpm import Bpm
 
+from ..utils import SinglePrecisionFloatEncoder
+
 from pathlib import Path
 import io
 from typing import Union
@@ -21,7 +23,9 @@ def _remove_none(data):
 
 
 def export(
-    path: Union[str, Path, io.BytesIO, io.StringIO, io.TextIOBase], score: Score
+    path: Union[str, Path, io.BytesIO, io.StringIO, io.TextIOBase],
+    score: Score,
+    minified: bool = True,
 ):
     if not any(isinstance(note, Bpm) for note in score.notes):
         score.notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
@@ -38,12 +42,29 @@ def export(
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as f:
-            json.dump(usc_data, f, indent=4, ensure_ascii=False)
+            json.dump(
+                usc_data,
+                f,
+                indent=None if minified else 4,
+                ensure_ascii=False,
+                cls=SinglePrecisionFloatEncoder,
+            )
     elif isinstance(path, (io.StringIO, io.TextIOBase)):
-        json.dump(usc_data, path, indent=4, ensure_ascii=False)
+        json.dump(
+            usc_data,
+            path,
+            indent=None if minified else 4,
+            ensure_ascii=False,
+            cls=SinglePrecisionFloatEncoder,
+        )
         path.seek(0)
     elif isinstance(path, io.BytesIO):
-        json_text = json.dumps(usc_data, indent=4, ensure_ascii=False)
+        json_text = json.dumps(
+            usc_data,
+            indent=None if minified else 4,
+            ensure_ascii=False,
+            cls=SinglePrecisionFloatEncoder,
+        )
         path.write(json_text.encode("utf-8"))
         path.seek(0)
     else:

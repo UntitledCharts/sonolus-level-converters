@@ -22,6 +22,8 @@ from ...notes import (
 )
 from ...notes.score import Score
 
+from ...utils import SinglePrecisionFloatEncoder
+
 
 def assert_never(arg: NoReturn) -> NoReturn:
     raise AssertionError("Expected code to be unreachable")
@@ -441,22 +443,36 @@ def export(
         path = Path(path)
         if not as_compressed:
             with path.open("w", encoding="utf-8") as f:
-                json.dump(leveldata, f, indent=4, ensure_ascii=False)
+                json.dump(
+                    leveldata,
+                    f,
+                    indent=4,
+                    ensure_ascii=False,
+                    cls=SinglePrecisionFloatEncoder,
+                )
         else:
             with gzip.open(f"{path}.gz", "wb") as f:
                 data = json.dumps(
-                    leveldata, ensure_ascii=False, separators=(",", ":")
+                    leveldata,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    cls=SinglePrecisionFloatEncoder,
                 ).encode("utf-8")
                 f.write(data)
     elif isinstance(path, io.BytesIO) or (
         hasattr(path, "write") and callable(path.write)
     ):
         if not as_compressed:
-            json_text = json.dumps(leveldata, indent=4, ensure_ascii=False)
+            json_text = json.dumps(
+                leveldata, indent=4, ensure_ascii=False, cls=SinglePrecisionFloatEncoder
+            )
             path.write(json_text.encode("utf-8"))
         else:
             data = json.dumps(
-                leveldata, ensure_ascii=False, separators=(",", ":")
+                leveldata,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                cls=SinglePrecisionFloatEncoder,
             ).encode("utf-8")
             with gzip.GzipFile(fileobj=path, mode="wb", mtime=0) as f:
                 f.write(data)
