@@ -496,7 +496,6 @@ def load(fp: IO) -> Score:
     # Guides
     guides: List[Guide] = []
 
-    # collect Guide segments from unnamed_entities and named parsed entities
     guide_segments_raw: List[dict] = []
 
     for ent in unnamed_entities:
@@ -579,6 +578,15 @@ def load(fp: IO) -> Score:
         head_to_segs.setdefault(head_key, []).append(seg)
         tail_to_segs.setdefault(tail_key, []).append(seg)
 
+    # stabilize ordering: sort each head list by head.beat (and tail.beat secondarily)
+    for seg_list in head_to_segs.values():
+        seg_list.sort(
+            key=lambda s: (
+                getattr(s["head"], "beat", 0.0),
+                getattr(s["tail"], "beat", 0.0),
+            )
+        )
+
     start_segments = [
         seg
         for seg in segment_nodes
@@ -590,6 +598,9 @@ def load(fp: IO) -> Score:
         )
         not in tail_to_segs
     ]
+
+    # sort start segments for deterministic output (by start.head.beat)
+    start_segments.sort(key=lambda s: getattr(s["head"], "beat", 0.0))
 
     for start_seg in start_segments:
         midpoints: List[GuidePoint] = [
