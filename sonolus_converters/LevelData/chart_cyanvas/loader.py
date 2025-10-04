@@ -549,7 +549,7 @@ def load(fp: IO) -> Score:
             ):
                 beat = ent["data"].get(beat_key, ent["data"].get("beat", 0.0))
                 lane = ent["data"].get("lane", 0.0)
-                size = ent["data"].get("size", 0.0)
+                size = ent["data"].get("size", 2.0)
                 tsg = ent["data"].get("timeScaleGroup", 0)
                 if isinstance(tsg, str) and str(tsg).startswith("tsg:"):
                     tsg = int(str(tsg).split(":", 1)[1])
@@ -560,7 +560,7 @@ def load(fp: IO) -> Score:
                 elif "Normal" in arch:
                     rcritical = False
                 elif "Hidden" in arch or arch == "HiddenSlideTickNote":
-                    rcritical = None
+                    rcritical = False
                 else:
                     rcritical = joint_critical_map.get(ent_name, start_point.critical)
 
@@ -794,62 +794,24 @@ def load(fp: IO) -> Score:
         }
         segment_nodes.append(node)
 
-    # group by (start, end)
-    groups: Dict[tuple, List[dict]] = {}
-    for seg in segment_nodes:
-        start_key = (
-            seg["start"].lane,
-            seg["start"].size,
-            seg["start"].beat,
-            seg["start"].timeScaleGroup,
-        )
-        end_key = (
-            seg["end"].lane,
-            seg["end"].size,
-            seg["end"].beat,
-            seg["end"].timeScaleGroup,
-        )
-        groups.setdefault((start_key, end_key), []).append(seg)
-
-    # process each group in threads
-    def _process_guide_group(item: Tuple[tuple, List[dict]]) -> Guide:
-        (start_key, end_key), segs = item
-        segs.sort(
-            key=lambda s: (
-                getattr(s["head"], "beat", 0.0),
-                getattr(s["tail"], "beat", 0.0),
-            )
-        )
-
-        midpoints: List[GuidePoint] = []
-        first_seg = segs[0]
-        start_ease = _conv_ease_str_required(first_seg.get("ease_val", None))
-        sp = first_seg["start"]
-        sp.ease = start_ease
-        midpoints.append(sp)
-
-        for seg in segs:
-            head_ease = _conv_ease_str_required(seg.get("ease_val", None))
-            # map ease to previous midpoint (head)
-            midpoints[-1].ease = head_ease
-            # append tail (visible midpoint)
-            midpoints.append(seg["tail"])
-
-        # final visible midpoint -> linear
-        midpoints[-1].ease = "linear"
-
-        g = Guide(midpoints=midpoints, color=segs[0]["color"], fade=segs[0]["fade"])
-        g.midpoints.sort(key=lambda m: getattr(m, "beat", 0.0))
-        return g
-
+    # each segment becomes an independent guide
     guides_results: List[Guide] = []
-    if groups:
-        with ThreadPoolExecutor() as ex:
-            futures = [ex.submit(_process_guide_group, gp) for gp in groups.items()]
-            for f in as_completed(futures):
-                g = f.result()
-                if g:
-                    guides_results.append(g)
+
+    for seg in segment_nodes:
+        ease_val = _conv_ease_str_required(seg.get("ease_val", None))
+        # assign eases directly per segment
+        seg["start"].ease = ease_val
+        seg["head"].ease = ease_val
+        seg["tail"].ease = ease_val
+        seg["end"].ease = "linear"  # final endpoint default
+
+        guide = Guide(
+            midpoints=[seg["start"], seg["head"], seg["tail"], seg["end"]],
+            color=seg["color"],
+            fade=seg["fade"],
+        )
+        guide.midpoints.sort(key=lambda m: getattr(m, "beat", 0.0))
+        guides_results.append(guide)
 
     notes.extend(guides_results)
 

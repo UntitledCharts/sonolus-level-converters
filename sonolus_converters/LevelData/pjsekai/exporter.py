@@ -513,7 +513,7 @@ def export(
                     cls=SinglePrecisionFloatEncoder,
                 )
         else:
-            with gzip.open(f"{path}.gz", "wb") as f:
+            with gzip.open(f"{path}", "wb") as f:
                 data = json.dumps(
                     leveldata,
                     ensure_ascii=False,
