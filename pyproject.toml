@@ -1,6 +1,6 @@
 [project]
 name = "sonolus_converters"
-version = "0.2.5"
+version = "0.2.6"
 description = "Convert between Sonolus LevelData files!"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -15,7 +15,8 @@ dependencies = [
     "typing-inspect>=0.4.0",
     "marshmallow>=3.3.0,<4.0.0",
     "packaging>=17.0",
-    "mypy-extensions>=0.3.0"
+    "mypy-extensions>=0.3.0",
+    "numpy"
 ]
 
 [tool.setuptools.packages.find]
