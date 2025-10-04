@@ -1,6 +1,7 @@
 import json
 import gzip
-from typing import IO, Dict, Any, List, Optional
+from typing import IO, Dict, Any, List, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ...notes.score import Score
 from ...notes.metadata import MetaData
@@ -88,8 +89,11 @@ def _is_single_archetype(archetype: str) -> bool:
 
 
 def _parse_tsg_index(name: str) -> Optional[int]:
-    if name.startswith("tsg:"):
-        return int(name.split(":")[1])
+    if isinstance(name, str) and name.startswith("tsg:"):
+        try:
+            return int(name.split(":")[1])
+        except Exception:
+            return None
     return None
 
 
@@ -112,90 +116,183 @@ def load(fp: IO) -> Score:
         requests=["ticks_per_beat 480"],
     )
 
-    # build entity maps
-    entities_by_name: Dict[str, Dict[str, Any]] = {}
-    unnamed_entities: List[Dict[str, Any]] = []
+    # stage: collect raw named and unnamed entities
+    raw_named: Dict[str, Dict[str, Any]] = {}
+    raw_unnamed: List[Dict[str, Any]] = []
     for ent in leveldata.get("entities", []):
         name = ent.get("name")
         if name is not None:
-            entities_by_name[name] = ent
+            raw_named[name] = ent
         else:
-            unnamed_entities.append(ent)
+            raw_unnamed.append(ent)
 
+    # normalized entity representation: (name_or_None, normalized_dict)
+    # normalized_dict: {"archetype": str, "data": dict}
+    normalized_entities: List[Tuple[Optional[str], Dict[str, Any]]] = []
+
+    for name, ent in raw_named.items():
+        data_map = ent.get("data")
+        if not isinstance(data_map, dict):
+            data_map = _entity_data_map(ent)
+        normalized_entities.append(
+            (name, {"archetype": ent.get("archetype", ""), "data": data_map})
+        )
+
+    for ent in raw_unnamed:
+        data_map = ent.get("data")
+        if not isinstance(data_map, dict):
+            data_map = _entity_data_map(ent)
+        normalized_entities.append(
+            (None, {"archetype": ent.get("archetype", ""), "data": data_map})
+        )
+
+    # build parsed dict for quick lookup by name (only for named)
     parsed: Dict[str, Dict[str, Any]] = {}
-    for name, ent in entities_by_name.items():
-        parsed[name] = {
-            "archetype": ent.get("archetype", ""),
-            "data": _entity_data_map(ent),
-        }
+    for name, nd in normalized_entities:
+        if name is not None:
+            parsed[name] = nd
 
-    def _get_field(e: Dict[str, Any], field: str, default=None):
-        if type(e["data"]) == list:
-            data = _entity_data_map(e.copy())
+    # common keys
+    beat_key = (
+        EngineArchetypeDataName.Beat
+        if hasattr(EngineArchetypeDataName, "Beat")
+        else "beat"
+    )
+    bpm_key = (
+        EngineArchetypeDataName.Bpm
+        if hasattr(EngineArchetypeDataName, "Bpm")
+        else "bpm"
+    )
+
+    # Build entity_cache mapping canonical_name -> normalized entry with quick fields
+    # canonical_name: existing name for named, or generated "__unnamed_ent_i"
+    entity_cache: Dict[str, Dict[str, Any]] = {}
+    fast_lookup: Dict[Tuple[Any, Any, Any, Any], List[str]] = (
+        {}
+    )  # (beat,lane,size,tsg) -> list of names
+
+    unnamed_index = 0
+    for name, nd in normalized_entities:
+        if name is None:
+            canonical = f"__unnamed_ent_{unnamed_index}"
+            unnamed_index += 1
         else:
-            data = e["data"]
-        val = data.get(field, default)
-        if val is None and field == "timeScaleGroup":
-            return 0
-        return val
+            canonical = name
+        archetype = nd.get("archetype", "")
+        data_map = nd.get("data", {}) or {}
+        beat = data_map.get(beat_key, data_map.get("beat", None))
+        lane = data_map.get("lane", None)
+        size = data_map.get("size", None)
+        tsg = data_map.get("timeScaleGroup", data_map.get("timeScale", 0))
+        if isinstance(tsg, str) and str(tsg).startswith("tsg:"):
+            try:
+                tsg = int(str(tsg).split(":", 1)[1])
+            except Exception:
+                tsg = 0
+        direction = data_map.get("direction", None)
+        entity_cache[canonical] = {
+            "name": canonical,
+            "orig_name": name,
+            "archetype": archetype,
+            "data": data_map,
+            "beat": beat,
+            "lane": lane,
+            "size": size,
+            "timeScaleGroup": tsg,
+            "direction": direction,
+        }
+        # populate fast_lookup when beat/lane/size known
+        if beat is not None and lane is not None and size is not None:
+            key = (beat, lane, size, tsg)
+            fast_lookup.setdefault(key, []).append(canonical)
 
-    def _all_entities():
-        for ent in unnamed_entities:
+    # convenience iterator similar to earlier behavior (unnamed first, then named)
+    def _all_entities_iter():
+        # unnamed in original order
+        unnamed_counter = 0
+        for ent in raw_unnamed:
             yield None, ent
-        for name, ent in parsed.items():
+            unnamed_counter += 1
+        for name, ent in raw_named.items():
             yield name, ent
 
     notes: List[Any] = []
 
-    # TimeScaleGroups
-    tsg_entities = [
+    # -------------------------
+    # TimeScaleGroups (parallelized per group)
+    # -------------------------
+    tsg_items = [
         (n, v)
         for n, v in parsed.items()
         if _is_timescale_group_archetype(v["archetype"])
     ]
-    tsg_by_index: Dict[int, TimeScaleGroup] = {}
-    for name, ent in tsg_entities:
+
+    def _process_tsg(
+        item: Tuple[str, Dict[str, Any]]
+    ) -> Optional[Tuple[int, TimeScaleGroup]]:
+        name, ent = item
         idx = _parse_tsg_index(name)
         if idx is None:
-            continue
-        length = _get_field(ent, "length", 0) or 0
+            return None
+        length = ent["data"].get("length", 0) or 0
         changes: List[TimeScalePoint] = []
         for i in range(int(length)):
             tsc_name = f"tsc:{idx}:{i}"
             tsc_ent = parsed.get(tsc_name)
             if tsc_ent:
-                beat = _get_field(tsc_ent, EngineArchetypeDataName.Beat, 0.0)
-                timeScale = _get_field(tsc_ent, "timeScale", 1.0)
+                beat = tsc_ent["data"].get(beat_key, tsc_ent["data"].get("beat", 0.0))
+                timeScale = tsc_ent["data"].get("timeScale", 1.0)
                 changes.append(TimeScalePoint(beat=beat, timeScale=timeScale))
         if not changes:
             tsc_ent = parsed.get("tsc:0:0")
             if tsc_ent:
-                beat = _get_field(tsc_ent, EngineArchetypeDataName.Beat, 0.0)
-                timeScale = _get_field(tsc_ent, "timeScale", 1.0)
+                beat = tsc_ent["data"].get(beat_key, tsc_ent["data"].get("beat", 0.0))
+                timeScale = tsc_ent["data"].get("timeScale", 1.0)
                 changes.append(TimeScalePoint(beat=beat, timeScale=timeScale))
-        tsg_by_index[idx] = TimeScaleGroup(changes=changes)
+        if not changes:
+            changes = [TimeScalePoint(beat=0.0, timeScale=1.0)]
+        changes.sort(key=lambda c: getattr(c, "beat", 0.0))
+        return (idx, TimeScaleGroup(changes=changes))
+
+    tsg_by_index: Dict[int, TimeScaleGroup] = {}
+    if tsg_items:
+        with ThreadPoolExecutor() as ex:
+            futures = [ex.submit(_process_tsg, it) for it in tsg_items]
+            for f in as_completed(futures):
+                res = f.result()
+                if res:
+                    idx, tsg = res
+                    tsg_by_index[idx] = tsg
+
     for idx in sorted(tsg_by_index.keys()):
         notes.append(tsg_by_index[idx])
 
-    print("✔ Hi-Speeds / Layers")
+    print("✔ Hi-Speeds/Layers")
 
+    # -------------------------
     # BPMs
-    for name, ent in _all_entities():
-        arch = ent["archetype"]
+    # -------------------------
+    for name, ent in _all_entities_iter():
+        arch = ent.get("archetype", "")
         if _is_bpm_archetype(arch):
-            beat_key = EngineArchetypeDataName.Beat
-            bpm_key = EngineArchetypeDataName.Bpm
-            beat = _get_field(ent, beat_key, 0.0)
-            bpm = _get_field(ent, bpm_key, None)
+            data_map = (
+                ent.get("data")
+                if isinstance(ent.get("data"), dict)
+                else _entity_data_map(ent)
+            )
+            beat = data_map.get(beat_key, data_map.get("beat", 0.0))
+            bpm = data_map.get(bpm_key, data_map.get("bpm", None))
             if bpm is None:
-                bpm = _get_field(ent, "bpm", 160.0)
+                bpm = 160.0
             notes.append(Bpm(beat=beat, bpm=bpm))
 
     print("✔ BPMs")
 
+    # -------------------------
     # Singles
-    for name, ent in _all_entities():
-        arch = ent["archetype"]
+    # -------------------------
+    for name, ent in _all_entities_iter():
+        arch = ent.get("archetype", "")
         if not _is_single_archetype(arch):
             continue
         if _is_simline_archetype(arch):
@@ -212,16 +309,20 @@ def load(fp: IO) -> Score:
         ):
             continue
 
-        beat = _get_field(
-            ent,
-            EngineArchetypeDataName.Beat,
-            None,
+        data_map = (
+            ent.get("data")
+            if isinstance(ent.get("data"), dict)
+            else _entity_data_map(ent)
         )
-        lane = _get_field(ent, "lane", None)
-        size = _get_field(ent, "size", None)
-        timeScaleGroup = _get_field(ent, "timeScaleGroup", 0)
-        if isinstance(timeScaleGroup, str) and timeScaleGroup.startswith("tsg:"):
-            timeScaleGroup = int(timeScaleGroup.split(":")[1])
+        beat = data_map.get(beat_key, data_map.get("beat", None))
+        lane = data_map.get("lane", None)
+        size = data_map.get("size", None)
+        timeScaleGroup = data_map.get("timeScaleGroup", data_map.get("timeScale", 0))
+        if isinstance(timeScaleGroup, str) and str(timeScaleGroup).startswith("tsg:"):
+            try:
+                timeScaleGroup = int(str(timeScaleGroup).split(":", 1)[1])
+            except Exception:
+                timeScaleGroup = 0
 
         if arch == "DamageNote":
             s = Single(
@@ -236,17 +337,16 @@ def load(fp: IO) -> Score:
 
         critical = "Critical" in arch
         trace = "Trace" in arch
-        direction_val = _get_field(ent, "direction", None)
+        direction_val = data_map.get("direction", None)
         direction = None
         if direction_val is not None:
             if arch == "NonDirectionalTraceFlickNote":
-                # specifically set up
                 direction = "up"
-                print(
-                    "Warning: NonDirectionalTraceFlickNote encountered, not supported. Converted to directional Up trace flick note."
-                )
             else:
-                direction = _INV_DIRECTIONS.get(int(direction_val), None)
+                try:
+                    direction = _INV_DIRECTIONS.get(int(direction_val), None)
+                except Exception:
+                    direction = None
 
         if beat is None:
             continue
@@ -264,23 +364,31 @@ def load(fp: IO) -> Score:
 
     print("✔ Singles")
 
+    # -------------------------
     # Slides
-
+    # -------------------------
+    # collect connectors (named + unnamed)
     connectors: Dict[str, Dict[str, Any]] = {}
+    for name, nd in parsed.items():
+        if _is_slide_connector_archetype(nd.get("archetype", "")):
+            connectors[name] = {"archetype": nd["archetype"], "data": nd["data"]}
 
-    for name, ent in parsed.items():
-        if _is_slide_connector_archetype(ent["archetype"]):
-            connectors[name] = {"archetype": ent["archetype"], "data": ent["data"]}
-
+    # unnamed connectors
     unnamed_conn_count = 0
-    for idx, ent in enumerate(unnamed_entities):
-        if ent.get("archetype") and _is_slide_connector_archetype(ent["archetype"]):
-            data_map = _entity_data_map(ent)
+    for idx, ent in enumerate(raw_unnamed):
+        arch = ent.get("archetype")
+        if arch and _is_slide_connector_archetype(arch):
+            data_map = (
+                ent.get("data")
+                if isinstance(ent.get("data"), dict)
+                else _entity_data_map(ent)
+            )
             gen_name = f"__unnamed_conn_{unnamed_conn_count}"
             unnamed_conn_count += 1
-            connectors[gen_name] = {"archetype": ent["archetype"], "data": data_map}
+            connectors[gen_name] = {"archetype": arch, "data": data_map}
 
-    connectors_by_start: Dict[str, List[tuple]] = {}
+    # index connectors by their start reference
+    connectors_by_start: Dict[str, List[Tuple[str, Dict[str, Any]]]] = {}
     for cname, cent in connectors.items():
         start_ref = cent["data"].get("start")
         start_name = start_ref.get("name") if isinstance(start_ref, dict) else start_ref
@@ -288,22 +396,30 @@ def load(fp: IO) -> Score:
             continue
         connectors_by_start.setdefault(start_name, []).append((cname, cent))
 
+    # gather slide starts (named only, as before)
     slide_starts = [
         (n, e) for n, e in parsed.items() if _is_slide_start_archetype(e["archetype"])
     ]
 
-    for start_name, start_ent in slide_starts:
+    def _process_slide_start(start_pair: Tuple[str, Dict[str, Any]]) -> Optional[Slide]:
+        start_name, start_ent = start_pair
         conns = connectors_by_start.get(start_name, [])
         if not conns:
-            continue
+            return None
 
         def _conn_head_beat(pair):
             _, cent = pair
             head_ref = cent["data"].get("head")
             head_name = head_ref.get("name") if isinstance(head_ref, dict) else head_ref
-            head_ent = parsed.get(head_name)
-            if head_ent:
-                return _get_field(head_ent, EngineArchetypeDataName.Beat, 0.0)
+            head_entry = entity_cache.get(head_name)
+            if head_entry:
+                hb = head_entry.get("beat", 0.0)
+                return hb if hb is not None else 0.0
+            # fallback to parsed
+            p = parsed.get(head_name)
+            if p:
+                hb = p["data"].get(beat_key, p["data"].get("beat", 0.0))
+                return hb if hb is not None else 0.0
             return 0.0
 
         conns_sorted = sorted(conns, key=_conn_head_beat)
@@ -327,6 +443,7 @@ def load(fp: IO) -> Score:
                 if isinstance(ref_name, str):
                     joint_critical_map[ref_name] = conn_is_critical
 
+        # determine end ref
         end_ref_candidate = None
         for _, cent in conns_sorted:
             end_ref = cent["data"].get("end")
@@ -335,12 +452,15 @@ def load(fp: IO) -> Score:
                 end_ref_candidate = end_name
                 break
 
-        start_beat = _get_field(start_ent, EngineArchetypeDataName.Beat, 0.0)
-        start_lane = _get_field(start_ent, "lane", 0.0)
-        start_size = _get_field(start_ent, "size", 0.0)
-        start_tsg = _get_field(start_ent, "timeScaleGroup", 0)
-        if isinstance(start_tsg, str) and start_tsg.startswith("tsg:"):
-            start_tsg = int(start_tsg.split(":")[1])
+        start_beat = start_ent["data"].get(beat_key, start_ent["data"].get("beat", 0.0))
+        start_lane = start_ent["data"].get("lane", 0.0)
+        start_size = start_ent["data"].get("size", 0.0)
+        start_tsg = start_ent["data"].get("timeScaleGroup", 0)
+        if isinstance(start_tsg, str) and str(start_tsg).startswith("tsg:"):
+            try:
+                start_tsg = int(str(start_tsg).split(":", 1)[1])
+            except Exception:
+                start_tsg = 0
         if "Hidden" in start_ent["archetype"]:
             start_judge = "none"
         elif "Trace" in start_ent["archetype"]:
@@ -348,6 +468,7 @@ def load(fp: IO) -> Score:
         else:
             start_judge = "normal"
 
+        # find connector whose head == start (first such connector)
         found = None
         for cname, cent in conns_sorted:
             head_ref = cent["data"].get("head")
@@ -368,17 +489,13 @@ def load(fp: IO) -> Score:
                 f"Connector '{cname}' referencing start '{start_name}' is missing 'ease'"
             )
 
-        if isinstance(sv, str):
-            start_ease = sv
-        else:
-            start_ease = _INV_EASES.get(sv)
+        start_ease = sv if isinstance(sv, str) else _INV_EASES.get(sv)
         if start_ease is None:
             raise RuntimeError(
                 f"Unknown ease value '{sv}' on connector '{cname}' for start '{start_name}'"
             )
 
-        # derive start critical from the start entity OR the authoritative connector (head==start)
-        # eg. HiddenSlideStartNote doesn't have Critical
+        # derive start critical from start entity or the authoritative connector
         start_critical = ("Critical" in start_ent.get("archetype", "")) or (
             "Critical" in cent.get("archetype", "")
         )
@@ -393,6 +510,7 @@ def load(fp: IO) -> Score:
             timeScaleGroup=start_tsg,
         )
 
+        # collect joint names
         joint_names: List[str] = []
         for _, cent in conns_sorted:
             data = cent["data"]
@@ -405,7 +523,8 @@ def load(fp: IO) -> Score:
         conn_names_for_slide = [cname for cname, _ in conns_sorted]
 
         relay_points: List[SlideRelayPoint] = []
-        # process named entities (existing logic)
+
+        # process named tick/attach entities
         for ent_name, ent in parsed.items():
             arch = ent["archetype"]
             if not _is_slide_tick_archetype(arch) or arch == "IgnoredSlideTickNote":
@@ -428,12 +547,12 @@ def load(fp: IO) -> Score:
             if ent_name in joint_names or any(
                 rn in conn_names_for_slide for rn in ref_names if rn
             ):
-                beat = _get_field(ent, EngineArchetypeDataName.Beat, 0.0)
-                lane = _get_field(ent, "lane", 0.0)
-                size = _get_field(ent, "size", 0.0)
-                tsg = _get_field(ent, "timeScaleGroup", 0)
-                if isinstance(tsg, str) and tsg.startswith("tsg:"):
-                    tsg = int(tsg.split(":")[1])
+                beat = ent["data"].get(beat_key, ent["data"].get("beat", 0.0))
+                lane = ent["data"].get("lane", 0.0)
+                size = ent["data"].get("size", 0.0)
+                tsg = ent["data"].get("timeScaleGroup", 0)
+                if isinstance(tsg, str) and str(tsg).startswith("tsg:"):
+                    tsg = int(str(tsg).split(":", 1)[1])
                 rtype = "attach" if ("Attached" in arch) else "tick"
 
                 if "Critical" in arch:
@@ -458,9 +577,8 @@ def load(fp: IO) -> Score:
                 )
                 relay_points.append(rp)
 
-        # ALSO process unnamed tick/attach entities (previously skipped)
-        unnamed_tick_count = 0
-        for idx, ent in enumerate(unnamed_entities):
+        # process unnamed tick/attach entities using fast_lookup to match by beat/lane/size/tsg
+        for idx, ent in enumerate(raw_unnamed):
             arch = ent.get("archetype")
             if (
                 not arch
@@ -469,7 +587,11 @@ def load(fp: IO) -> Score:
             ):
                 continue
 
-            data_map = _entity_data_map(ent)
+            data_map = (
+                ent.get("data")
+                if isinstance(ent.get("data"), dict)
+                else _entity_data_map(ent)
+            )
             attach_ref = data_map.get("attach")
             slide_ref = data_map.get("slide")
             ref_names = []
@@ -484,57 +606,45 @@ def load(fp: IO) -> Score:
                     slide_ref.get("name") if isinstance(slide_ref, dict) else slide_ref
                 )
 
-            # include if it references one of this slide's connectors, or if it matches a joint by value
             referenced = any(rn in conn_names_for_slide for rn in ref_names if rn)
-            # also attempt matching by beat/lane/size/tsg to joint_names where possible
+
             if not referenced:
-                # build a simple key to compare against joint entries (if joint entity names exist in parsed)
-                try:
-                    b = data_map.get(
-                        EngineArchetypeDataName.Beat, data_map.get("beat", None)
-                    )
-                except Exception:
-                    b = data_map.get("beat", None)
+                b = data_map.get(beat_key, data_map.get("beat", None))
                 lane = data_map.get("lane", None)
                 size = data_map.get("size", None)
                 tsg = data_map.get("timeScaleGroup", None)
-                if isinstance(tsg, str) and tsg.startswith("tsg:"):
+                if isinstance(tsg, str) and str(tsg).startswith("tsg:"):
                     try:
-                        tsg = int(tsg.split(":", 1)[1])
+                        tsg = int(str(tsg).split(":", 1)[1])
                     except Exception:
                         tsg = 0
                 if b is not None and lane is not None and size is not None:
-                    # compare to joint_names by fetching parsed entry for each joint and matching fields
-                    for jn in joint_names:
-                        jent = parsed.get(jn)
-                        if not jent:
+                    key = (b, lane, size, tsg)
+                    candidates = fast_lookup.get(key, [])
+                    for cand in candidates:
+                        # candidate corresponds to parsed name or generated unnamed canonical name
+                        cand_entry = entity_cache.get(cand)
+                        if not cand_entry:
                             continue
-                        jb = _get_field(jent, EngineArchetypeDataName.Beat, None)
-                        jlane = _get_field(jent, "lane", None)
-                        jsize = _get_field(jent, "size", None)
-                        jtsg = _get_field(jent, "timeScaleGroup", None)
-                        if isinstance(jtsg, str) and str(jtsg).startswith("tsg:"):
-                            try:
-                                jtsg = int(str(jtsg).split(":", 1)[1])
-                            except Exception:
-                                jtsg = 0
-                        if jb == b and jlane == lane and jsize == size and jtsg == tsg:
+                        # if candidate maps to a named joint that we expect, mark referenced
+                        orig_name = cand_entry.get("orig_name")
+                        if orig_name in joint_names:
                             referenced = True
                             break
 
             if not referenced:
                 continue
 
-            # create a generated name for potential ease lookup (fallback to start_ease)
+            # generate synthetic name for ease fallback
             gen_name = f"__unnamed_tick_{idx}"
 
-            beat = data_map.get(EngineArchetypeDataName.Beat, data_map.get("beat", 0.0))
+            beat = data_map.get(beat_key, data_map.get("beat", 0.0))
             lane = data_map.get("lane", 0.0)
             size = data_map.get("size", 0.0)
             tsg = data_map.get("timeScaleGroup", 0)
-            if isinstance(tsg, str) and tsg.startswith("tsg:"):
+            if isinstance(tsg, str) and str(tsg).startswith("tsg:"):
                 try:
-                    tsg = int(tsg.split(":", 1)[1])
+                    tsg = int(str(tsg).split(":", 1)[1])
                 except Exception:
                     tsg = 0
             rtype = "attach" if ("Attached" in arch) else "tick"
@@ -562,22 +672,22 @@ def load(fp: IO) -> Score:
             relay_points.append(rp)
 
         if not end_ref_candidate or end_ref_candidate not in parsed:
-            continue
+            return None
 
         end_ent = parsed[end_ref_candidate]
-        end_beat = _get_field(end_ent, EngineArchetypeDataName.Beat, 0.0)
-        end_lane = _get_field(end_ent, "lane", 0.0)
-        end_size = _get_field(end_ent, "size", 0.0)
-        end_tsg = _get_field(end_ent, "timeScaleGroup", 0)
-        if isinstance(end_tsg, str) and end_tsg.startswith("tsg:"):
-            end_tsg = int(end_tsg.split(":")[1])
+        end_beat = end_ent["data"].get(beat_key, end_ent["data"].get("beat", 0.0))
+        end_lane = end_ent["data"].get("lane", 0.0)
+        end_size = end_ent["data"].get("size", 0.0)
+        end_tsg = end_ent["data"].get("timeScaleGroup", 0)
+        if isinstance(end_tsg, str) and str(end_tsg).startswith("tsg:"):
+            end_tsg = int(str(end_tsg).split(":", 1)[1])
         if "Hidden" in end_ent["archetype"]:
             end_judge = "none"
         elif "Trace" in end_ent["archetype"]:
             end_judge = "trace"
         else:
             end_judge = "normal"
-        dir_val = _get_field(end_ent, "direction", None)
+        dir_val = end_ent["data"].get("direction", None)
         direction = (
             _INV_DIRECTIONS.get(int(dir_val), None) if dir_val is not None else None
         )
@@ -594,29 +704,38 @@ def load(fp: IO) -> Score:
             direction=direction,
         )
 
+        # assemble and sort relays by beat
         relay_points_sorted = sorted(
             relay_points, key=lambda r: getattr(r, "beat", 0.0)
         )
         connections_list = [start_point] + relay_points_sorted + [end_point]
+        slide_obj = Slide(
+            critical=bool(start_point.critical), connections=connections_list
+        )
+        slide_obj.sort()
+        return slide_obj
 
-        slide_critical = bool(start_point.critical)
-
-        slide_obj = Slide(critical=slide_critical, connections=connections_list)
-        notes.append(slide_obj)
+    slides_results: List[Slide] = []
+    if slide_starts:
+        with ThreadPoolExecutor() as ex:
+            futures = [ex.submit(_process_slide_start, sp) for sp in slide_starts]
+            for f in as_completed(futures):
+                s = f.result()
+                if s:
+                    slides_results.append(s)
+    notes.extend(slides_results)
 
     print("✔ Slides")
 
+    # -------------------------
     # Guides
-    guides: List[Guide] = []
-
+    # -------------------------
     guide_segments_raw: List[dict] = []
-
-    for ent in unnamed_entities:
+    for ent in raw_unnamed:
         if ent.get("archetype") == "Guide":
             guide_segments_raw.append(
                 {d["name"]: d.get("value", d.get("ref")) for d in ent.get("data", [])}
             )
-
     for name, ent in parsed.items():
         if ent.get("archetype") == "Guide":
             guide_segments_raw.append(ent["data"])
@@ -637,7 +756,7 @@ def load(fp: IO) -> Score:
             raise RuntimeError(f"Unknown/missing ease value: {ease_val}")
         return mapped
 
-    # convert raw segments into normalized nodes
+    # normalize segments
     segment_nodes: List[dict] = []
     for data_map in guide_segments_raw:
         node = {
@@ -675,7 +794,7 @@ def load(fp: IO) -> Score:
         }
         segment_nodes.append(node)
 
-    # group by (start, end) so segments that share same start+end are reconstructed together
+    # group by (start, end)
     groups: Dict[tuple, List[dict]] = {}
     for seg in segment_nodes:
         start_key = (
@@ -692,9 +811,9 @@ def load(fp: IO) -> Score:
         )
         groups.setdefault((start_key, end_key), []).append(seg)
 
-    # reconstruct each group
-    for (start_key, end_key), segs in groups.items():
-        # sort by head.beat (then tail.beat) to ensure correct ordering A->B->C->...
+    # process each group in threads
+    def _process_guide_group(item: Tuple[tuple, List[dict]]) -> Guide:
+        (start_key, end_key), segs = item
         segs.sort(
             key=lambda s: (
                 getattr(s["head"], "beat", 0.0),
@@ -702,38 +821,41 @@ def load(fp: IO) -> Score:
             )
         )
 
-        # build midpoints:
-        # - start is the start point
-        # - for each segment (in order): set that segment's head.ease (required) and append its tail
         midpoints: List[GuidePoint] = []
-
         first_seg = segs[0]
-        # start's ease is the first segment's ease (required)
         start_ease = _conv_ease_str_required(first_seg.get("ease_val", None))
         sp = first_seg["start"]
         sp.ease = start_ease
         midpoints.append(sp)
 
         for seg in segs:
-            # each segment's ease maps to its head (required)
             head_ease = _conv_ease_str_required(seg.get("ease_val", None))
-            # the current head corresponds to the last appended midpoint (start for first seg, otherwise previous tail)
+            # map ease to previous midpoint (head)
             midpoints[-1].ease = head_ease
-            # append the tail (visible midpoint)
+            # append tail (visible midpoint)
             midpoints.append(seg["tail"])
 
-        # final visible midpoint is the last appended tail; ensure it defaults to linear (aka None)
+        # final visible midpoint -> linear
         midpoints[-1].ease = "linear"
 
-        # construct Guide using color/fade from the group's first segment
-        guides.append(
-            Guide(midpoints=midpoints, color=segs[0]["color"], fade=segs[0]["fade"])
-        )
+        g = Guide(midpoints=midpoints, color=segs[0]["color"], fade=segs[0]["fade"])
+        g.midpoints.sort(key=lambda m: getattr(m, "beat", 0.0))
+        return g
 
-    notes.extend(guides)
+    guides_results: List[Guide] = []
+    if groups:
+        with ThreadPoolExecutor() as ex:
+            futures = [ex.submit(_process_guide_group, gp) for gp in groups.items()]
+            for f in as_completed(futures):
+                g = f.result()
+                if g:
+                    guides_results.append(g)
+
+    notes.extend(guides_results)
 
     print("✔ Guides")
 
-    # assemble score
+    # final score
     score = Score(metadata=metadata, notes=notes)
+    score.sort_by_beat()
     return score

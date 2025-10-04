@@ -7,7 +7,7 @@ Requires `Python >= 3.10`
 Any file type listed here supports conversions between and from.
 - `.usc`
 - `.sus`
-- `chart_cyanvas LevelData`
+- `chart_cyanvas LevelData` - (returns a identical copy of the original usc, except without time signatures)
 
 # Partial Support
 Any file type listed here will have some support.
