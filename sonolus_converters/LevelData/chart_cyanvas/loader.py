@@ -180,6 +180,8 @@ def load(fp: IO) -> Score:
     for idx in sorted(tsg_by_index.keys()):
         notes.append(tsg_by_index[idx])
 
+    print("✔ Hi-Speeds / Layers")
+
     # BPMs
     for name, ent in _all_entities():
         arch = ent["archetype"]
@@ -191,6 +193,8 @@ def load(fp: IO) -> Score:
             if bpm is None:
                 bpm = _get_field(ent, "bpm", 160.0)
             notes.append(Bpm(beat=beat, bpm=bpm))
+
+    print("✔ BPMs")
 
     # Singles
     for name, ent in _all_entities():
@@ -260,6 +264,8 @@ def load(fp: IO) -> Score:
             direction=direction,
         )
         notes.append(s)
+
+    print("✔ Singles")
 
     # Slides
 
@@ -374,7 +380,11 @@ def load(fp: IO) -> Score:
                 f"Unknown ease value '{sv}' on connector '{cname}' for start '{start_name}'"
             )
 
-        start_critical = "Critical" in start_ent["archetype"]
+        # derive start critical from the start entity OR the authoritative connector (head==start)
+        # eg. HiddenSlideStartNote doesn't have Critical
+        start_critical = ("Critical" in start_ent.get("archetype", "")) or (
+            "Critical" in cent.get("archetype", "")
+        )
 
         start_point = SlideStartPoint(
             beat=start_beat,
@@ -493,6 +503,8 @@ def load(fp: IO) -> Score:
         slide_obj = Slide(critical=slide_critical, connections=connections_list)
         notes.append(slide_obj)
 
+    print("✔ Slides")
+
     # Guides
     guides: List[Guide] = []
 
@@ -517,44 +529,46 @@ def load(fp: IO) -> Score:
                 return 0
         return val if isinstance(val, (int, float)) else 0
 
+    def _conv_ease_str(ease_val):
+        if isinstance(ease_val, str):
+            return ease_val
+        mapped = _INV_EASES.get(ease_val)
+        if mapped is None:
+            raise RuntimeError(f"Unknown/missing ease value: {ease_val}")
+        return mapped
+
     segment_nodes: List[dict] = []
     for data_map in guide_segments_raw:
-        ease_val = data_map.get("ease", 0)
-        ease = (
-            ease_val
-            if isinstance(ease_val, str)
-            else _INV_EASES.get(ease_val, "linear")
-        )
-
         node = {
             "start": GuidePoint(
                 beat=data_map.get("startBeat"),
                 lane=data_map.get("startLane"),
                 size=data_map.get("startSize"),
                 timeScaleGroup=_tsg_val(data_map.get("startTimeScaleGroup")),
-                ease=ease,
+                ease=None,
             ),
             "head": GuidePoint(
                 beat=data_map.get("headBeat"),
                 lane=data_map.get("headLane"),
                 size=data_map.get("headSize"),
                 timeScaleGroup=_tsg_val(data_map.get("headTimeScaleGroup")),
-                ease=ease,
+                ease=None,
             ),
             "tail": GuidePoint(
                 beat=data_map.get("tailBeat"),
                 lane=data_map.get("tailLane"),
                 size=data_map.get("tailSize"),
                 timeScaleGroup=_tsg_val(data_map.get("tailTimeScaleGroup")),
-                ease=ease,
+                ease=None,
             ),
             "end": GuidePoint(
                 beat=data_map.get("endBeat"),
                 lane=data_map.get("endLane"),
                 size=data_map.get("endSize"),
                 timeScaleGroup=_tsg_val(data_map.get("endTimeScaleGroup")),
-                ease=ease,
+                ease=None,
             ),
+            "ease_val": data_map.get("ease", None),
             "color": _INV_COLORS.get(data_map.get("color")),
             "fade": _INV_FADES.get(data_map.get("fade")),
         }
@@ -578,7 +592,6 @@ def load(fp: IO) -> Score:
         head_to_segs.setdefault(head_key, []).append(seg)
         tail_to_segs.setdefault(tail_key, []).append(seg)
 
-    # stabilize ordering: sort each head list by head.beat (and tail.beat secondarily)
     for seg_list in head_to_segs.values():
         seg_list.sort(
             key=lambda s: (
@@ -599,46 +612,64 @@ def load(fp: IO) -> Score:
         not in tail_to_segs
     ]
 
-    # sort start segments for deterministic output (by start.head.beat)
     start_segments.sort(key=lambda s: getattr(s["head"], "beat", 0.0))
 
     for start_seg in start_segments:
-        midpoints: List[GuidePoint] = [
-            start_seg["start"],
-            start_seg["head"],
-            start_seg["tail"],
-        ]
-        end_point = start_seg["end"]
+        chain: List[dict] = []
+        chain.append(start_seg)
         next_key = (
             start_seg["tail"].lane,
             start_seg["tail"].size,
             start_seg["tail"].beat,
             start_seg["tail"].timeScaleGroup,
         )
-
         while True:
             seg_list = head_to_segs.get(next_key)
             if not seg_list:
                 break
-            next_seg = seg_list.pop(0)
-            midpoints.append(next_seg["tail"])
-            end_point = next_seg["end"]
+            nxt = seg_list.pop(0)
+            chain.append(nxt)
             next_key = (
-                next_seg["tail"].lane,
-                next_seg["tail"].size,
-                next_seg["tail"].beat,
-                next_seg["tail"].timeScaleGroup,
+                nxt["tail"].lane,
+                nxt["tail"].size,
+                nxt["tail"].beat,
+                nxt["tail"].timeScaleGroup,
             )
 
+        # Build midpoints: start followed by each tail in chain
+        midpoints: List[GuidePoint] = []
+        # set start ease from first segment (required)
+        first_seg = chain[0]
+        sease_val = first_seg.get("ease_val", None)
+        start_ease = _conv_ease_str(sease_val)
+        sp = first_seg["start"]
+        sp.ease = start_ease
+        midpoints.append(sp)
+
+        # For each segment in chain, set that segment's head.ease (required),
+        # append its tail (tail.ease will be set when that tail becomes head of next segment).
+        for seg in chain:
+            # head corresponds to previous midpoint (could be same as start)
+            hease_val = seg.get("ease_val", None)
+            head_ease = _conv_ease_str(hease_val)
+            head_gp = seg["head"]
+            head_gp.ease = head_ease
+            # append tail
+            tail_gp = seg["tail"]
+            midpoints.append(tail_gp)
+
+        # end point: allowed to default to "linear"
+        end_point = chain[-1]["end"]
+        end_point.ease = "linear"
+        midpoints.append(end_point)
+
         guides.append(
-            Guide(
-                midpoints=midpoints + [end_point],
-                color=start_seg["color"],
-                fade=start_seg["fade"],
-            )
+            Guide(midpoints=midpoints, color=start_seg["color"], fade=start_seg["fade"])
         )
 
     notes.extend(guides)
+
+    print("✔ Guides")
 
     # assemble score
     score = Score(metadata=metadata, notes=notes)
