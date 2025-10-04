@@ -514,10 +514,9 @@ def load(fp: IO) -> Score:
 
     for ent in unnamed_entities:
         if ent.get("archetype") == "Guide":
-            data_map = {
-                d["name"]: d.get("value", d.get("ref")) for d in ent.get("data", [])
-            }
-            guide_segments_raw.append(data_map)
+            guide_segments_raw.append(
+                {d["name"]: d.get("value", d.get("ref")) for d in ent.get("data", [])}
+            )
 
     for name, ent in parsed.items():
         if ent.get("archetype") == "Guide":
@@ -531,7 +530,7 @@ def load(fp: IO) -> Score:
                 return 0
         return val if isinstance(val, (int, float)) else 0
 
-    def _conv_ease_str(ease_val):
+    def _conv_ease_str_required(ease_val):
         if isinstance(ease_val, str):
             return ease_val
         mapped = _INV_EASES.get(ease_val)
@@ -539,6 +538,7 @@ def load(fp: IO) -> Score:
             raise RuntimeError(f"Unknown/missing ease value: {ease_val}")
         return mapped
 
+    # convert raw segments into normalized nodes
     segment_nodes: List[dict] = []
     for data_map in guide_segments_raw:
         node = {
@@ -576,97 +576,59 @@ def load(fp: IO) -> Score:
         }
         segment_nodes.append(node)
 
-    head_to_segs: Dict[tuple, List[dict]] = {}
-    tail_to_segs: Dict[tuple, List[dict]] = {}
+    # group by (start, end) so segments that share same start+end are reconstructed together
+    groups: Dict[tuple, List[dict]] = {}
     for seg in segment_nodes:
-        head_key = (
-            seg["head"].lane,
-            seg["head"].size,
-            seg["head"].beat,
-            seg["head"].timeScaleGroup,
+        start_key = (
+            seg["start"].lane,
+            seg["start"].size,
+            seg["start"].beat,
+            seg["start"].timeScaleGroup,
         )
-        tail_key = (
-            seg["tail"].lane,
-            seg["tail"].size,
-            seg["tail"].beat,
-            seg["tail"].timeScaleGroup,
+        end_key = (
+            seg["end"].lane,
+            seg["end"].size,
+            seg["end"].beat,
+            seg["end"].timeScaleGroup,
         )
-        head_to_segs.setdefault(head_key, []).append(seg)
-        tail_to_segs.setdefault(tail_key, []).append(seg)
+        groups.setdefault((start_key, end_key), []).append(seg)
 
-    for seg_list in head_to_segs.values():
-        seg_list.sort(
+    # reconstruct each group
+    for (start_key, end_key), segs in groups.items():
+        # sort by head.beat (then tail.beat) to ensure correct ordering A->B->C->...
+        segs.sort(
             key=lambda s: (
                 getattr(s["head"], "beat", 0.0),
                 getattr(s["tail"], "beat", 0.0),
             )
         )
 
-    start_segments = [
-        seg
-        for seg in segment_nodes
-        if (
-            seg["head"].lane,
-            seg["head"].size,
-            seg["head"].beat,
-            seg["head"].timeScaleGroup,
-        )
-        not in tail_to_segs
-    ]
-
-    start_segments.sort(key=lambda s: getattr(s["head"], "beat", 0.0))
-
-    for start_seg in start_segments:
-        chain: List[dict] = []
-        chain.append(start_seg)
-        next_key = (
-            start_seg["tail"].lane,
-            start_seg["tail"].size,
-            start_seg["tail"].beat,
-            start_seg["tail"].timeScaleGroup,
-        )
-        while True:
-            seg_list = head_to_segs.get(next_key)
-            if not seg_list:
-                break
-            nxt = seg_list.pop(0)
-            chain.append(nxt)
-            next_key = (
-                nxt["tail"].lane,
-                nxt["tail"].size,
-                nxt["tail"].beat,
-                nxt["tail"].timeScaleGroup,
-            )
-
-        # Build midpoints: start followed by each tail in chain
+        # build midpoints:
+        # - start is the start point
+        # - for each segment (in order): set that segment's head.ease (required) and append its tail
         midpoints: List[GuidePoint] = []
-        # set start ease from first segment (required)
-        first_seg = chain[0]
-        sease_val = first_seg.get("ease_val", None)
-        start_ease = _conv_ease_str(sease_val)
+
+        first_seg = segs[0]
+        # start's ease is the first segment's ease (required)
+        start_ease = _conv_ease_str_required(first_seg.get("ease_val", None))
         sp = first_seg["start"]
         sp.ease = start_ease
         midpoints.append(sp)
 
-        # For each segment in chain, set that segment's head.ease (required),
-        # append its tail (tail.ease will be set when that tail becomes head of next segment).
-        for seg in chain:
-            # head corresponds to previous midpoint (could be same as start)
-            hease_val = seg.get("ease_val", None)
-            head_ease = _conv_ease_str(hease_val)
-            head_gp = seg["head"]
-            head_gp.ease = head_ease
-            # append tail
-            tail_gp = seg["tail"]
-            midpoints.append(tail_gp)
+        for seg in segs:
+            # each segment's ease maps to its head (required)
+            head_ease = _conv_ease_str_required(seg.get("ease_val", None))
+            # the current head corresponds to the last appended midpoint (start for first seg, otherwise previous tail)
+            midpoints[-1].ease = head_ease
+            # append the tail (visible midpoint)
+            midpoints.append(seg["tail"])
 
-        # end point: allowed to default to "linear"
-        end_point = chain[-1]["end"]
-        end_point.ease = "linear"
-        midpoints.append(end_point)
+        # final visible midpoint is the last appended tail; ensure it defaults to linear (aka None)
+        midpoints[-1].ease = "linear"
 
+        # construct Guide using color/fade from the group's first segment
         guides.append(
-            Guide(midpoints=midpoints, color=start_seg["color"], fade=start_seg["fade"])
+            Guide(midpoints=midpoints, color=segs[0]["color"], fade=segs[0]["fade"])
         )
 
     notes.extend(guides)
