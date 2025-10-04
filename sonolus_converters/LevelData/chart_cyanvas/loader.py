@@ -199,6 +199,13 @@ def load(fp: IO) -> Score:
             continue
         if _is_simline_archetype(arch):
             continue
+        if (
+            _is_slide_start_archetype(arch)
+            or _is_slide_end_archetype(arch)
+            or _is_slide_connector_archetype(arch)
+            or _is_slide_start_archetype(arch)
+        ):
+            continue
         if "Slide" in arch and (
             "TickNote" in arch or "Attached" in arch or "IgnoredSlideTickNote" in arch
         ):
