@@ -215,6 +215,7 @@ def export(
     def handle_single(obj: Single):
         if obj.type == "damage":
             inter = Intermediate(
+                archetype="DamageNote",
                 data={
                     EngineArchetypeDataName.Beat: obj.beat,
                     "lane": obj.lane,

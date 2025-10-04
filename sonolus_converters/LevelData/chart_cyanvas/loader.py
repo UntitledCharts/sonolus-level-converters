@@ -222,6 +222,17 @@ def load(fp: IO) -> Score:
         if isinstance(timeScaleGroup, str) and timeScaleGroup.startswith("tsg:"):
             timeScaleGroup = int(timeScaleGroup.split(":")[1])
 
+        if arch == "DamageNote":
+            s = Single(
+                beat=beat,
+                lane=lane,
+                size=size,
+                timeScaleGroup=timeScaleGroup,
+                type="damage",
+            )
+            notes.append(s)
+            continue
+
         critical = "Critical" in arch
         trace = "Trace" in arch
         direction_val = _get_field(ent, "direction", None)
