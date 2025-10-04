@@ -253,11 +253,19 @@ def load(fp: IO) -> Score:
     # Slides
 
     connectors: Dict[str, Dict[str, Any]] = {}
+
     for name, ent in parsed.items():
         if _is_slide_connector_archetype(ent["archetype"]):
-            connectors[name] = ent
+            connectors[name] = {"archetype": ent["archetype"], "data": ent["data"]}
 
-    # Map connectors by their start reference
+    unnamed_conn_count = 0
+    for idx, ent in enumerate(unnamed_entities):
+        if ent.get("archetype") and _is_slide_connector_archetype(ent["archetype"]):
+            data_map = _entity_data_map(ent)
+            gen_name = f"__unnamed_conn_{unnamed_conn_count}"
+            unnamed_conn_count += 1
+            connectors[gen_name] = {"archetype": ent["archetype"], "data": data_map}
+
     connectors_by_start: Dict[str, List[tuple]] = {}
     for cname, cent in connectors.items():
         start_ref = cent["data"].get("start")
@@ -266,7 +274,6 @@ def load(fp: IO) -> Score:
             continue
         connectors_by_start.setdefault(start_name, []).append((cname, cent))
 
-    # gather all possible slide start entities
     slide_starts = [
         (n, e) for n, e in parsed.items() if _is_slide_start_archetype(e["archetype"])
     ]
@@ -274,12 +281,8 @@ def load(fp: IO) -> Score:
     for start_name, start_ent in slide_starts:
         conns = connectors_by_start.get(start_name, [])
         if not conns:
-            print(
-                f"Warning: no connectors found for slide start '{start_name}', skipping."
-            )
             continue
 
-        # order connectors by head beat (keeps connector order consistent)
         def _conn_head_beat(pair):
             _, cent = pair
             head_ref = cent["data"].get("head")
@@ -291,31 +294,25 @@ def load(fp: IO) -> Score:
 
         conns_sorted = sorted(conns, key=_conn_head_beat)
 
-        # build per-point ease map: connector defines ease for start/head/tail/end refs
         ease_map: Dict[str, str] = {}
-        # also build a joint -> connector-critical map so joints can inherit connector criticalness
         joint_critical_map: Dict[str, Optional[bool]] = {}
         for cname, cent in conns_sorted:
             conn_data = cent["data"]
             ease_val = conn_data.get("ease", None)
-            ease_str = (
-                _INV_EASES.get(ease_val, "linear") if ease_val is not None else "linear"
-            )
-
-            # mark connector-critical (True if connector archetype contains "Critical")
+            ease_str = _INV_EASES.get(ease_val, None) if ease_val is not None else None
+            if ease_str is not None:
+                for ref_field in ("start", "head", "tail", "end"):
+                    ref = conn_data.get(ref_field)
+                    ref_name = ref.get("name") if isinstance(ref, dict) else ref
+                    if isinstance(ref_name, str):
+                        ease_map[ref_name] = ease_str
             conn_is_critical = "Critical" in cent.get("archetype", "")
-
-            for ref_field in ("start", "head", "tail", "end"):
+            for ref_field in ("head", "tail"):
                 ref = conn_data.get(ref_field)
                 ref_name = ref.get("name") if isinstance(ref, dict) else ref
                 if isinstance(ref_name, str):
-                    ease_map[ref_name] = ease_str
-                    # set joint critical only for head/tail (they are joints)
-                    if ref_field in ("head", "tail"):
-                        # store connector-level critical for the joint (later used if tick lacks explicit critical)
-                        joint_critical_map[ref_name] = conn_is_critical
+                    joint_critical_map[ref_name] = conn_is_critical
 
-        # determine end reference (first connector that has an 'end' ref)
         end_ref_candidate = None
         for _, cent in conns_sorted:
             end_ref = cent["data"].get("end")
@@ -324,7 +321,6 @@ def load(fp: IO) -> Score:
                 end_ref_candidate = end_name
                 break
 
-        # build start point fields
         start_beat = _get_field(start_ent, EngineArchetypeDataName.Beat, 0.0)
         start_lane = _get_field(start_ent, "lane", 0.0)
         start_size = _get_field(start_ent, "size", 0.0)
@@ -338,9 +334,35 @@ def load(fp: IO) -> Score:
         else:
             start_judge = "normal"
 
-        # start ease is taken from connectors that reference the start (default to linear)
-        start_ease = ease_map.get(start_name, "linear")
-        # start critical derived from the start entity archetype
+        found = None
+        for cname, cent in conns_sorted:
+            head_ref = cent["data"].get("head")
+            head_name = head_ref.get("name") if isinstance(head_ref, dict) else head_ref
+            if head_name == start_name:
+                found = (cname, cent)
+                break
+
+        if not found:
+            raise RuntimeError(
+                f"No connector where head == start for slide start '{start_name}'"
+            )
+
+        cname, cent = found
+        sv = cent["data"].get("ease", None)
+        if sv is None:
+            raise RuntimeError(
+                f"Connector '{cname}' referencing start '{start_name}' is missing 'ease'"
+            )
+
+        if isinstance(sv, str):
+            start_ease = sv
+        else:
+            start_ease = _INV_EASES.get(sv)
+        if start_ease is None:
+            raise RuntimeError(
+                f"Unknown ease value '{sv}' on connector '{cname}' for start '{start_name}'"
+            )
+
         start_critical = "Critical" in start_ent["archetype"]
 
         start_point = SlideStartPoint(
@@ -353,7 +375,6 @@ def load(fp: IO) -> Score:
             timeScaleGroup=start_tsg,
         )
 
-        # gather joint names referenced by connectors
         joint_names: List[str] = []
         for _, cent in conns_sorted:
             data = cent["data"]
@@ -363,20 +384,14 @@ def load(fp: IO) -> Score:
                 if isinstance(ref_name, str) and ref_name not in joint_names:
                     joint_names.append(ref_name)
 
-        # connector name list for this slide
         conn_names_for_slide = [cname for cname, _ in conns_sorted]
 
-        # collect relay points (ticks/attaches)
         relay_points: List[SlideRelayPoint] = []
         for ent_name, ent in parsed.items():
             arch = ent["archetype"]
-            if not _is_slide_tick_archetype(arch):
-                continue
-            if arch == "IgnoredSlideTickNote":
-                # ignore generated tick
+            if not _is_slide_tick_archetype(arch) or arch == "IgnoredSlideTickNote":
                 continue
 
-            # check references to see if this tick/attach belongs to this slide
             attach_ref = ent["data"].get("attach")
             slide_ref = ent["data"].get("slide")
             ref_names = []
@@ -402,26 +417,16 @@ def load(fp: IO) -> Score:
                     tsg = int(tsg.split(":")[1])
                 rtype = "attach" if ("Attached" in arch) else "tick"
 
-                # determine critical for this relay/tick:
-                # 1) if archetype explicitly marks Critical/Normal/Hidden, use that
-                # 2) else if a connector references this joint and that connector was Critical, use that
-                # 3) else inherit from start_point
                 if "Critical" in arch:
                     rcritical = True
                 elif "Normal" in arch:
                     rcritical = False
                 elif "Hidden" in arch or arch == "HiddenSlideTickNote":
-                    # hidden tick has no critical value
                     rcritical = None
                 else:
-                    # try connector-level joint critical
-                    if ent_name in joint_critical_map:
-                        rcritical = joint_critical_map[ent_name]
-                    else:
-                        rcritical = start_point.critical
+                    rcritical = joint_critical_map.get(ent_name, start_point.critical)
 
-                # ease for relay comes from ease_map for this entity if present; default to linear
-                rp_ease = ease_map.get(ent_name, "linear")
+                rp_ease = ease_map.get(ent_name, start_ease)
 
                 rp = SlideRelayPoint(
                     beat=beat,
@@ -434,11 +439,7 @@ def load(fp: IO) -> Score:
                 )
                 relay_points.append(rp)
 
-        # require an end point present in named entities
         if not end_ref_candidate or end_ref_candidate not in parsed:
-            print(
-                f"Warning: couldn't find end for slide starting at '{start_name}' — skipping slide."
-            )
             continue
 
         end_ent = parsed[end_ref_candidate]
@@ -471,7 +472,6 @@ def load(fp: IO) -> Score:
             direction=direction,
         )
 
-        # assemble connections (start, sorted relays, end)
         relay_points_sorted = sorted(
             relay_points, key=lambda r: getattr(r, "beat", 0.0)
         )
