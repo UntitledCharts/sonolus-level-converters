@@ -485,68 +485,73 @@ def load(fp: IO) -> Score:
     # Guides
     guides: List[Guide] = []
 
-    # collect all unnamed Guide archetype segments
-    guide_segments_raw: List[dict] = [
-        ent for ent in unnamed_entities if ent.get("archetype") == "Guide"
-    ]
+    # collect Guide segments from unnamed_entities and named parsed entities
+    guide_segments_raw: List[dict] = []
 
-    # convert each entity into a dict with its midpoints and ease
-    segment_nodes: List[dict] = []
-    for seg in guide_segments_raw:
-        data_map = {
-            d["name"]: d.get("value", d.get("ref")) for d in seg.get("data", [])
-        }
+    for ent in unnamed_entities:
+        if ent.get("archetype") == "Guide":
+            data_map = {
+                d["name"]: d.get("value", d.get("ref")) for d in ent.get("data", [])
+            }
+            guide_segments_raw.append(data_map)
 
-        # convert timescale groups "tsg:N"
-        def tsg(val):
-            if isinstance(val, str) and val.startswith("tsg:"):
+    for name, ent in parsed.items():
+        if ent.get("archetype") == "Guide":
+            guide_segments_raw.append(ent["data"])
+
+    def _tsg_val(val):
+        if isinstance(val, str) and val.startswith("tsg:"):
+            try:
                 return int(val.split(":", 1)[1])
-            return val if isinstance(val, (int, float)) else 0
+            except Exception:
+                return 0
+        return val if isinstance(val, (int, float)) else 0
 
-        # map ease
+    segment_nodes: List[dict] = []
+    for data_map in guide_segments_raw:
         ease_val = data_map.get("ease", 0)
-        if isinstance(ease_val, str):
-            ease = ease_val
-        else:
-            ease = _INV_EASES.get(ease_val, "linear")
+        ease = (
+            ease_val
+            if isinstance(ease_val, str)
+            else _INV_EASES.get(ease_val, "linear")
+        )
 
         node = {
             "start": GuidePoint(
                 beat=data_map.get("startBeat"),
                 lane=data_map.get("startLane"),
                 size=data_map.get("startSize"),
-                timeScaleGroup=tsg(data_map.get("startTimeScaleGroup")),
+                timeScaleGroup=_tsg_val(data_map.get("startTimeScaleGroup")),
                 ease=ease,
             ),
             "head": GuidePoint(
                 beat=data_map.get("headBeat"),
                 lane=data_map.get("headLane"),
                 size=data_map.get("headSize"),
-                timeScaleGroup=tsg(data_map.get("headTimeScaleGroup")),
+                timeScaleGroup=_tsg_val(data_map.get("headTimeScaleGroup")),
                 ease=ease,
             ),
             "tail": GuidePoint(
                 beat=data_map.get("tailBeat"),
                 lane=data_map.get("tailLane"),
                 size=data_map.get("tailSize"),
-                timeScaleGroup=tsg(data_map.get("tailTimeScaleGroup")),
+                timeScaleGroup=_tsg_val(data_map.get("tailTimeScaleGroup")),
                 ease=ease,
             ),
             "end": GuidePoint(
                 beat=data_map.get("endBeat"),
                 lane=data_map.get("endLane"),
                 size=data_map.get("endSize"),
-                timeScaleGroup=tsg(data_map.get("endTimeScaleGroup")),
+                timeScaleGroup=_tsg_val(data_map.get("endTimeScaleGroup")),
                 ease=ease,
             ),
-            "color": _INV_COLORS[data_map.get("color")],
-            "fade": _INV_FADES[data_map.get("fade")],
+            "color": _INV_COLORS.get(data_map.get("color")),
+            "fade": _INV_FADES.get(data_map.get("fade")),
         }
         segment_nodes.append(node)
 
-    # build mapping for chain reconstruction
-    head_to_seg = {}
-    tail_to_seg = {}
+    head_to_segs: Dict[tuple, List[dict]] = {}
+    tail_to_segs: Dict[tuple, List[dict]] = {}
     for seg in segment_nodes:
         head_key = (
             seg["head"].lane,
@@ -560,22 +565,19 @@ def load(fp: IO) -> Score:
             seg["tail"].beat,
             seg["tail"].timeScaleGroup,
         )
-        head_to_seg[head_key] = seg
-        tail_to_seg[tail_key] = seg
+        head_to_segs.setdefault(head_key, []).append(seg)
+        tail_to_segs.setdefault(tail_key, []).append(seg)
 
-    # find starting segments: head that is not any tail
     start_segments = [
         seg
         for seg in segment_nodes
         if (
-            (
-                seg["head"].lane,
-                seg["head"].size,
-                seg["head"].beat,
-                seg["head"].timeScaleGroup,
-            )
-            not in tail_to_seg
+            seg["head"].lane,
+            seg["head"].size,
+            seg["head"].beat,
+            seg["head"].timeScaleGroup,
         )
+        not in tail_to_segs
     ]
 
     for start_seg in start_segments:
@@ -585,7 +587,6 @@ def load(fp: IO) -> Score:
             start_seg["tail"],
         ]
         end_point = start_seg["end"]
-
         next_key = (
             start_seg["tail"].lane,
             start_seg["tail"].size,
@@ -593,25 +594,13 @@ def load(fp: IO) -> Score:
             start_seg["tail"].timeScaleGroup,
         )
 
-        # Reconstruct full connected guide chain
-        while next_key in head_to_seg:
-            next_seg = head_to_seg[next_key]
-
-            # stop if the next segment is self-connected (head == tail)
-            if (
-                next_seg["head"].lane == next_seg["tail"].lane
-                and next_seg["head"].size == next_seg["tail"].size
-                and next_seg["head"].beat == next_seg["tail"].beat
-                and next_seg["head"].timeScaleGroup == next_seg["tail"].timeScaleGroup
-            ):
-                midpoints.append(next_seg["tail"])
-                end_point = next_seg["end"]
+        while True:
+            seg_list = head_to_segs.get(next_key)
+            if not seg_list:
                 break
-
+            next_seg = seg_list.pop(0)
             midpoints.append(next_seg["tail"])
             end_point = next_seg["end"]
-
-            # advance
             next_key = (
                 next_seg["tail"].lane,
                 next_seg["tail"].size,
@@ -619,7 +608,6 @@ def load(fp: IO) -> Score:
                 next_seg["tail"].timeScaleGroup,
             )
 
-        # finalize the guide
         guides.append(
             Guide(
                 midpoints=midpoints + [end_point],
@@ -627,6 +615,8 @@ def load(fp: IO) -> Score:
                 fade=start_seg["fade"],
             )
         )
+
+    notes.extend(guides)
 
     # assemble score
     score = Score(metadata=metadata, notes=notes)
