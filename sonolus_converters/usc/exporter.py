@@ -47,6 +47,7 @@ def export(
                 f,
                 indent=None if minified else 4,
                 ensure_ascii=False,
+                separators=(",", ":") if minified else None,
                 cls=SinglePrecisionFloatEncoder,
             )
     elif isinstance(path, (io.StringIO, io.TextIOBase)):
@@ -55,6 +56,7 @@ def export(
             path,
             indent=None if minified else 4,
             ensure_ascii=False,
+            separators=(",", ":") if minified else None,
             cls=SinglePrecisionFloatEncoder,
         )
         path.seek(0)
@@ -63,6 +65,7 @@ def export(
             usc_data,
             indent=None if minified else 4,
             ensure_ascii=False,
+            separators=(",", ":") if minified else None,
             cls=SinglePrecisionFloatEncoder,
         )
         path.write(json_text.encode("utf-8"))
