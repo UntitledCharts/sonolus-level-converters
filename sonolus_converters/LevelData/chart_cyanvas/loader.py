@@ -727,10 +727,11 @@ def load(fp: IO) -> Score:
 
     print("✔ Slides")
 
-    # -------------------------
     # Guides
-    # -------------------------
-    guide_segments_raw: List[dict] = []
+    # note: guides can overlap.
+    # this is a massive headache.
+    # it is IMPOSSIBLE to determine some placements of guides, so this will do a best-guess.
+    guide_segments_raw = []
     for ent in raw_unnamed:
         if ent.get("archetype") == "Guide":
             guide_segments_raw.append(
@@ -748,73 +749,142 @@ def load(fp: IO) -> Score:
                 return 0
         return val if isinstance(val, (int, float)) else 0
 
-    def _conv_ease_str_required(ease_val):
+    def _conv_ease_required(ease_val):
         if isinstance(ease_val, str):
             return ease_val
         mapped = _INV_EASES.get(ease_val)
         if mapped is None:
-            raise RuntimeError(f"Unknown/missing ease value: {ease_val}")
+            raise RuntimeError(
+                f"Unknown/missing ease value for Guide segment: {ease_val}"
+            )
         return mapped
 
-    # normalize segments
-    segment_nodes: List[dict] = []
+    segment_nodes = []
     for data_map in guide_segments_raw:
-        node = {
-            "start": GuidePoint(
-                beat=data_map.get("startBeat"),
-                lane=data_map.get("startLane"),
-                size=data_map.get("startSize"),
-                timeScaleGroup=_tsg_val(data_map.get("startTimeScaleGroup")),
-                ease=None,
-            ),
-            "head": GuidePoint(
-                beat=data_map.get("headBeat"),
-                lane=data_map.get("headLane"),
-                size=data_map.get("headSize"),
-                timeScaleGroup=_tsg_val(data_map.get("headTimeScaleGroup")),
-                ease=None,
-            ),
-            "tail": GuidePoint(
-                beat=data_map.get("tailBeat"),
-                lane=data_map.get("tailLane"),
-                size=data_map.get("tailSize"),
-                timeScaleGroup=_tsg_val(data_map.get("tailTimeScaleGroup")),
-                ease=None,
-            ),
-            "end": GuidePoint(
-                beat=data_map.get("endBeat"),
-                lane=data_map.get("endLane"),
-                size=data_map.get("endSize"),
-                timeScaleGroup=_tsg_val(data_map.get("endTimeScaleGroup")),
-                ease=None,
-            ),
-            "ease_val": data_map.get("ease", None),
-            "color": _INV_COLORS.get(data_map.get("color")),
-            "fade": _INV_FADES.get(data_map.get("fade")),
-        }
-        segment_nodes.append(node)
-
-    # each segment becomes an independent guide
-    guides_results: List[Guide] = []
-
-    for seg in segment_nodes:
-        ease_val = _conv_ease_str_required(seg.get("ease_val", None))
-        # assign eases directly per segment
-        seg["start"].ease = ease_val
-        seg["head"].ease = ease_val
-        seg["tail"].ease = ease_val
-        seg["end"].ease = "linear"  # final endpoint default
-
-        guide = Guide(
-            midpoints=[seg["start"], seg["head"], seg["tail"], seg["end"]],
-            color=seg["color"],
-            fade=seg["fade"],
+        segment_nodes.append(
+            {
+                "start": GuidePoint(
+                    beat=data_map.get("startBeat"),
+                    lane=data_map.get("startLane"),
+                    size=data_map.get("startSize"),
+                    timeScaleGroup=_tsg_val(data_map.get("startTimeScaleGroup")),
+                    ease=None,
+                ),
+                "head": GuidePoint(
+                    beat=data_map.get("headBeat"),
+                    lane=data_map.get("headLane"),
+                    size=data_map.get("headSize"),
+                    timeScaleGroup=_tsg_val(data_map.get("headTimeScaleGroup")),
+                    ease=None,
+                ),
+                "tail": GuidePoint(
+                    beat=data_map.get("tailBeat"),
+                    lane=data_map.get("tailLane"),
+                    size=data_map.get("tailSize"),
+                    timeScaleGroup=_tsg_val(data_map.get("tailTimeScaleGroup")),
+                    ease=None,
+                ),
+                "end": GuidePoint(
+                    beat=data_map.get("endBeat"),
+                    lane=data_map.get("endLane"),
+                    size=data_map.get("endSize"),
+                    timeScaleGroup=_tsg_val(data_map.get("endTimeScaleGroup")),
+                    ease=None,
+                ),
+                "ease_val": data_map.get("ease"),
+                "color": _INV_COLORS.get(data_map.get("color")),
+                "fade": _INV_FADES.get(data_map.get("fade")),
+            }
         )
-        guide.midpoints.sort(key=lambda m: getattr(m, "beat", 0.0))
-        guides_results.append(guide)
+
+    groups = {}
+    for seg in segment_nodes:
+        start_key = (
+            seg["start"].lane,
+            seg["start"].size,
+            seg["start"].beat,
+            seg["start"].timeScaleGroup,
+        )
+        end_key = (
+            seg["end"].lane,
+            seg["end"].size,
+            seg["end"].beat,
+            seg["end"].timeScaleGroup,
+        )
+        color = seg["color"]
+        groups.setdefault((start_key, end_key, color), []).append(seg)
+
+    guides_results = []
+
+    for (_, _, color), segs in groups.items():
+        remaining = list(segs)
+        remaining.sort(
+            key=lambda s: (
+                getattr(s["head"], "beat", 0.0),
+                getattr(s["tail"], "beat", 0.0),
+            )
+        )
+
+        def _key_head(s):
+            h = s["head"]
+            return (h.lane, h.size, h.beat, h.timeScaleGroup)
+
+        def _key_tail(s):
+            t = s["tail"]
+            return (t.lane, t.size, t.beat, t.timeScaleGroup)
+
+        while remaining:
+            tail_keys = {_key_tail(s) for s in remaining}
+            start_candidates = [s for s in remaining if _key_head(s) not in tail_keys]
+
+            if start_candidates:
+                start_seg = min(
+                    start_candidates, key=lambda s: getattr(s["head"], "beat", 0.0)
+                )
+                remaining.remove(start_seg)
+            else:
+                start_seg = remaining.pop(0)
+
+            chain = [start_seg]
+            cur_tail_key = _key_tail(chain[-1])
+
+            while True:
+                candidates = [
+                    s
+                    for s in remaining
+                    if _key_head(s) == cur_tail_key and s["color"] == chain[-1]["color"]
+                ]
+                if not candidates:
+                    break
+                next_seg = min(
+                    candidates,
+                    key=lambda s: (
+                        getattr(s["head"], "beat", 0.0),
+                        getattr(s["tail"], "beat", 0.0),
+                    ),
+                )
+                remaining.remove(next_seg)
+                chain.append(next_seg)
+                cur_tail_key = _key_tail(next_seg)
+
+            midpoints = []
+            first_seg = chain[0]
+            start_ease = _conv_ease_required(first_seg.get("ease_val"))
+            sp = first_seg["start"]
+            sp.ease = start_ease
+            midpoints.append(sp)
+
+            for seg in chain:
+                head_ease = _conv_ease_required(seg.get("ease_val"))
+                midpoints[-1].ease = head_ease
+                midpoints.append(seg["tail"])
+
+            midpoints[-1].ease = "linear"
+            guides_results.append(
+                Guide(midpoints=midpoints, color=color, fade=chain[0]["fade"])
+            )
 
     notes.extend(guides_results)
-
     print("✔ Guides")
 
     # final score
