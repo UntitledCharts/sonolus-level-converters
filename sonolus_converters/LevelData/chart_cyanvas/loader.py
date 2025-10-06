@@ -301,7 +301,6 @@ def load(fp: IO) -> Score:
             _is_slide_start_archetype(arch)
             or _is_slide_end_archetype(arch)
             or _is_slide_connector_archetype(arch)
-            or _is_slide_start_archetype(arch)
         ):
             continue
         if "Slide" in arch and (
@@ -367,13 +366,11 @@ def load(fp: IO) -> Score:
     # -------------------------
     # Slides
     # -------------------------
-    # collect connectors (named + unnamed)
     connectors: Dict[str, Dict[str, Any]] = {}
     for name, nd in parsed.items():
         if _is_slide_connector_archetype(nd.get("archetype", "")):
             connectors[name] = {"archetype": nd["archetype"], "data": nd["data"]}
 
-    # unnamed connectors
     unnamed_conn_count = 0
     for idx, ent in enumerate(raw_unnamed):
         arch = ent.get("archetype")
@@ -387,7 +384,6 @@ def load(fp: IO) -> Score:
             unnamed_conn_count += 1
             connectors[gen_name] = {"archetype": arch, "data": data_map}
 
-    # index connectors by their start reference
     connectors_by_start: Dict[str, List[Tuple[str, Dict[str, Any]]]] = {}
     for cname, cent in connectors.items():
         start_ref = cent["data"].get("start")
@@ -396,7 +392,6 @@ def load(fp: IO) -> Score:
             continue
         connectors_by_start.setdefault(start_name, []).append((cname, cent))
 
-    # gather slide starts (named only, as before)
     slide_starts = [
         (n, e) for n, e in parsed.items() if _is_slide_start_archetype(e["archetype"])
     ]
@@ -415,7 +410,6 @@ def load(fp: IO) -> Score:
             if head_entry:
                 hb = head_entry.get("beat", 0.0)
                 return hb if hb is not None else 0.0
-            # fallback to parsed
             p = parsed.get(head_name)
             if p:
                 hb = p["data"].get(beat_key, p["data"].get("beat", 0.0))
@@ -443,7 +437,6 @@ def load(fp: IO) -> Score:
                 if isinstance(ref_name, str):
                     joint_critical_map[ref_name] = conn_is_critical
 
-        # determine end ref
         end_ref_candidate = None
         for _, cent in conns_sorted:
             end_ref = cent["data"].get("end")
@@ -452,9 +445,11 @@ def load(fp: IO) -> Score:
                 end_ref_candidate = end_name
                 break
 
-        start_beat = start_ent["data"].get(beat_key, start_ent["data"].get("beat", 0.0))
-        start_lane = start_ent["data"].get("lane", 0.0)
-        start_size = start_ent["data"].get("size", 0.0)
+        start_beat = start_ent["data"].get(
+            beat_key, start_ent["data"].get("beat", None)
+        )
+        start_lane = start_ent["data"].get("lane", None)
+        start_size = start_ent["data"].get("size", None)
         start_tsg = start_ent["data"].get("timeScaleGroup", 0)
         if isinstance(start_tsg, str) and str(start_tsg).startswith("tsg:"):
             try:
@@ -468,7 +463,11 @@ def load(fp: IO) -> Score:
         else:
             start_judge = "normal"
 
-        # find connector whose head == start (first such connector)
+        if start_beat is None or start_lane is None or start_size is None:
+            raise RuntimeError(
+                f"Slide start '{start_name}' missing required beat/lane/size: beat={start_beat}, lane={start_lane}, size={start_size}"
+            )
+
         found = None
         for cname, cent in conns_sorted:
             head_ref = cent["data"].get("head")
@@ -495,7 +494,6 @@ def load(fp: IO) -> Score:
                 f"Unknown ease value '{sv}' on connector '{cname}' for start '{start_name}'"
             )
 
-        # derive start critical from start entity or the authoritative connector
         start_critical = ("Critical" in start_ent.get("archetype", "")) or (
             "Critical" in cent.get("archetype", "")
         )
@@ -510,7 +508,6 @@ def load(fp: IO) -> Score:
             timeScaleGroup=start_tsg,
         )
 
-        # collect joint names
         joint_names: List[str] = []
         for _, cent in conns_sorted:
             data = cent["data"]
@@ -522,9 +519,9 @@ def load(fp: IO) -> Score:
 
         conn_names_for_slide = [cname for cname, _ in conns_sorted]
 
-        relay_points: List[SlideRelayPoint] = []
+        relay_items: List[Dict[str, Any]] = []
 
-        # process named tick/attach entities
+        # named ticks/attaches
         for ent_name, ent in parsed.items():
             arch = ent["archetype"]
             if not _is_slide_tick_archetype(arch) or arch == "IgnoredSlideTickNote":
@@ -544,40 +541,50 @@ def load(fp: IO) -> Score:
                     slide_ref.get("name") if isinstance(slide_ref, dict) else slide_ref
                 )
 
-            if ent_name in joint_names or any(
+            is_related = ent_name in joint_names or any(
                 rn in conn_names_for_slide for rn in ref_names if rn
-            ):
-                beat = ent["data"].get(beat_key, ent["data"].get("beat", 0.0))
-                lane = ent["data"].get("lane", 0.0)
-                size = ent["data"].get("size", 2.0)
-                tsg = ent["data"].get("timeScaleGroup", 0)
-                if isinstance(tsg, str) and str(tsg).startswith("tsg:"):
-                    tsg = int(str(tsg).split(":", 1)[1])
-                rtype = "attach" if ("Attached" in arch) else "tick"
+            )
+            if not is_related:
+                continue
 
-                if "Critical" in arch:
-                    rcritical = True
-                elif "Normal" in arch:
-                    rcritical = False
-                elif "Hidden" in arch or arch == "HiddenSlideTickNote":
-                    rcritical = False
-                else:
-                    rcritical = joint_critical_map.get(ent_name, start_point.critical)
-
-                rp_ease = ease_map.get(ent_name, start_ease)
-
-                rp = SlideRelayPoint(
-                    beat=beat,
-                    ease=rp_ease,
-                    lane=lane,
-                    size=size,
-                    timeScaleGroup=tsg,
-                    type=rtype,
-                    critical=rcritical,
+            beat = ent["data"].get(beat_key, ent["data"].get("beat", None))
+            if beat is None:
+                raise RuntimeError(
+                    f"Slide tick/attach '{ent_name}' missing beat for slide starting '{start_name}'"
                 )
-                relay_points.append(rp)
+            lane = ent["data"].get("lane", None)
+            size = ent["data"].get("size", None)
+            tsg = ent["data"].get("timeScaleGroup", 0)
+            if isinstance(tsg, str) and str(tsg).startswith("tsg:"):
+                try:
+                    tsg = int(str(tsg).split(":", 1)[1])
+                except Exception:
+                    tsg = 0
+            rtype = "attach" if ("Attached" in arch) else "tick"
 
-        # process unnamed tick/attach entities using fast_lookup to match by beat/lane/size/tsg
+            if "Critical" in arch:
+                rcritical = True
+            elif "Normal" in arch:
+                rcritical = False
+            elif "Hidden" in arch or arch == "HiddenSlideTickNote":
+                rcritical = None
+            else:
+                rcritical = joint_critical_map.get(ent_name, start_point.critical)
+
+            rp_ease = ease_map.get(ent_name, start_ease)
+            relay_items.append(
+                {
+                    "beat": beat,
+                    "lane": lane,
+                    "size": size,
+                    "timeScaleGroup": tsg,
+                    "type": rtype,
+                    "critical": rcritical,
+                    "ease": rp_ease,
+                }
+            )
+
+        # unnamed ticks/attaches (match by references or spatial match)
         for idx, ent in enumerate(raw_unnamed):
             arch = ent.get("archetype")
             if (
@@ -607,7 +614,6 @@ def load(fp: IO) -> Score:
                 )
 
             referenced = any(rn in conn_names_for_slide for rn in ref_names if rn)
-
             if not referenced:
                 b = data_map.get(beat_key, data_map.get("beat", None))
                 lane = data_map.get("lane", None)
@@ -622,11 +628,9 @@ def load(fp: IO) -> Score:
                     key = (b, lane, size, tsg)
                     candidates = fast_lookup.get(key, [])
                     for cand in candidates:
-                        # candidate corresponds to parsed name or generated unnamed canonical name
                         cand_entry = entity_cache.get(cand)
                         if not cand_entry:
                             continue
-                        # if candidate maps to a named joint that we expect, mark referenced
                         orig_name = cand_entry.get("orig_name")
                         if orig_name in joint_names:
                             referenced = True
@@ -635,12 +639,14 @@ def load(fp: IO) -> Score:
             if not referenced:
                 continue
 
-            # generate synthetic name for ease fallback
             gen_name = f"__unnamed_tick_{idx}"
-
-            beat = data_map.get(beat_key, data_map.get("beat", 0.0))
-            lane = data_map.get("lane", 0.0)
-            size = data_map.get("size", 0.0)
+            beat = data_map.get(beat_key, data_map.get("beat", None))
+            if beat is None:
+                raise RuntimeError(
+                    f"Unnamed slide tick at index {idx} missing beat for slide starting '{start_name}'"
+                )
+            lane = data_map.get("lane", None)
+            size = data_map.get("size", None)
             tsg = data_map.get("timeScaleGroup", 0)
             if isinstance(tsg, str) and str(tsg).startswith("tsg:"):
                 try:
@@ -659,28 +665,33 @@ def load(fp: IO) -> Score:
                 rcritical = start_point.critical
 
             rp_ease = ease_map.get(gen_name, start_ease)
-
-            rp = SlideRelayPoint(
-                beat=beat,
-                ease=rp_ease,
-                lane=lane,
-                size=size,
-                timeScaleGroup=tsg,
-                type=rtype,
-                critical=rcritical,
+            relay_items.append(
+                {
+                    "beat": beat,
+                    "lane": lane,
+                    "size": size,
+                    "timeScaleGroup": tsg,
+                    "type": rtype,
+                    "critical": rcritical,
+                    "ease": rp_ease,
+                }
             )
-            relay_points.append(rp)
 
         if not end_ref_candidate or end_ref_candidate not in parsed:
-            return None
+            raise RuntimeError(
+                f"Couldn't find end entity for slide starting at '{start_name}'"
+            )
 
         end_ent = parsed[end_ref_candidate]
-        end_beat = end_ent["data"].get(beat_key, end_ent["data"].get("beat", 0.0))
-        end_lane = end_ent["data"].get("lane", 0.0)
-        end_size = end_ent["data"].get("size", 0.0)
+        end_beat = end_ent["data"].get(beat_key, end_ent["data"].get("beat", None))
+        end_lane = end_ent["data"].get("lane", None)
+        end_size = end_ent["data"].get("size", None)
         end_tsg = end_ent["data"].get("timeScaleGroup", 0)
         if isinstance(end_tsg, str) and str(end_tsg).startswith("tsg:"):
-            end_tsg = int(str(end_tsg).split(":", 1)[1])
+            try:
+                end_tsg = int(str(end_tsg).split(":", 1)[1])
+            except Exception:
+                end_tsg = 0
         if "Hidden" in end_ent["archetype"]:
             end_judge = "none"
         elif "Trace" in end_ent["archetype"]:
@@ -691,6 +702,11 @@ def load(fp: IO) -> Score:
         direction = (
             _INV_DIRECTIONS.get(int(dir_val), None) if dir_val is not None else None
         )
+
+        if end_beat is None or end_lane is None or end_size is None:
+            raise RuntimeError(
+                f"Slide end '{end_ref_candidate}' missing required beat/lane/size: beat={end_beat}, lane={end_lane}, size={end_size}"
+            )
 
         end_critical = "Critical" in end_ent["archetype"]
 
@@ -704,11 +720,32 @@ def load(fp: IO) -> Score:
             direction=direction,
         )
 
-        # assemble and sort relays by beat
-        relay_points_sorted = sorted(
-            relay_points, key=lambda r: getattr(r, "beat", 0.0)
-        )
-        connections_list = [start_point] + relay_points_sorted + [end_point]
+        # sort relay items by beat and fill missing lane/size from previous (or start if first)
+        relay_items_sorted = sorted(relay_items, key=lambda r: r["beat"])
+        filled_relays: List[SlideRelayPoint] = []
+        prev_lane = start_point.lane
+        prev_size = start_point.size
+        for item in relay_items_sorted:
+            lane = item.get("lane", None)
+            size = item.get("size", None)
+            if lane is None:
+                lane = prev_lane
+            if size is None:
+                size = prev_size
+            prev_lane = lane
+            prev_size = size
+            rp = SlideRelayPoint(
+                beat=item["beat"],
+                ease=item["ease"],
+                lane=lane,
+                size=size,
+                timeScaleGroup=item.get("timeScaleGroup", 0),
+                type=item.get("type", "tick"),
+                critical=item.get("critical"),
+            )
+            filled_relays.append(rp)
+
+        connections_list = [start_point] + filled_relays + [end_point]
         slide_obj = Slide(
             critical=bool(start_point.critical), connections=connections_list
         )

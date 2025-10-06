@@ -74,7 +74,8 @@ def detect(
     leveldata_type = None
     if leveldata:
         if not any(
-            e.get("archetype") == "TimeScaleGroup" for e in level_data["entities"]
+            e.get("archetype") in ["TimeScaleGroup", "#TIMESCALE_GROUP"]
+            for e in level_data["entities"]
         ):
             extended = False
         else:
@@ -88,6 +89,8 @@ def detect(
                 "TransientHiddenTick" in ld_str
                 or "Fake" in ld_str
                 or "segmentHead" in ld_str
+            ) or any(
+                e.get("archetype") == "#TIMESCALE_GROUP" for e in level_data["entities"]
             ):  # XXX: make more robust. there's a lot more: some guide colors, down flicks
                 leveldata_type = "nextsekai"
         else:
