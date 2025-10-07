@@ -1,11 +1,11 @@
 import json
 
-import numpy as np
-
 
 class SinglePrecisionFloatEncoder(json.JSONEncoder):
     def encode(self, o):
         if isinstance(o, float):
+            import numpy as np
+
             return str(np.float32(o))
         return super().encode(o)
 
