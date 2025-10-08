@@ -1,6 +1,7 @@
 import json
 import gzip
-from typing import IO, List, Union
+from typing import IO, Any, Dict, List, Tuple, Optional
+from collections import defaultdict
 
 from ...notes.score import Score
 from ...notes.metadata import MetaData
@@ -13,13 +14,18 @@ from ...notes.guide import Guide, GuidePoint
 from ...notes.engine.archetypes import EngineArchetypeName, EngineArchetypeDataName
 
 
+_PJ_EASES_INV = {-1: "out", 0: "linear", 1: "in"}
+
+
+def _is_gzip_start(two_bytes: bytes) -> bool:
+    return two_bytes[:2] == b"\x1f\x8b"
+
+
 def load(fp: IO) -> Score:
-    """Load a pjsekai LevelData file and convert it to a Score object."""
-    # check first 2 bytes of possible gzip
     start = fp.peek(2) if hasattr(fp, "peek") else fp.read(2)
     if not hasattr(fp, "peek"):
-        fp.seek(0)  # set pointer back to start
-    if start[:2] == b"\x1f\x8b":  # GZIP magic number
+        fp.seek(0)
+    if _is_gzip_start(start):
         with gzip.GzipFile(fileobj=fp, mode="rb", mtime=0) as gz:
             leveldata = json.load(gz)
     else:
@@ -33,35 +39,15 @@ def load(fp: IO) -> Score:
         requests=["ticks_per_beat 480"],
     )
 
-    notes: List[Union[Bpm, TimeScaleGroup, Single, Slide, Guide]] = []
+    entities_raw: List[Dict[str, Any]] = leveldata.get("entities", []) or []
 
-    directions = {
-        -1: "left",
-        0: "up",
-        1: "right",
-    }
-
-    eases = {
-        -1: "out",
-        0: "linear",
-        1: "in",
-    }
-
-    def reverse_single_archetype(archetype: str):
-        critical = "Critical" in archetype
-        trace = "Trace" in archetype
-        return critical, trace
-
-    entities_raw = leveldata.get("entities", []) or []
-
-    ref_to_raw = {}
-    for e in entities_raw:
-        name = e.get("name")
+    ref_to_raw: Dict[str, Dict[str, Any]] = {}
+    for ent in entities_raw:
+        name = ent.get("name")
         if name:
-            ref_to_raw[name] = e
+            ref_to_raw[name] = ent
 
-    def get_field_raw(entity_raw: dict, field_name: str):
-        """Return either numeric value or a raw ref string for a field in an entity."""
+    def get_field_raw(entity_raw: Dict[str, Any], field_name: str):
         for d in entity_raw.get("data", []):
             if d.get("name") == field_name:
                 if "value" in d:
@@ -70,78 +56,8 @@ def load(fp: IO) -> Score:
                     return d["ref"]
         return None
 
-    slide_related_raw = []
-    has_bpm = False
-
-    for entity in entities_raw:
-        archetype = entity.get("archetype")
-        data = {d["name"]: d.get("value", d.get("ref")) for d in entity.get("data", [])}
-
-        if not archetype:
-            continue
-
-        if archetype == "SimLine":
-            # ignore simlines
-            continue
-
-        # BPM
-        if archetype == EngineArchetypeName.BpmChange:
-            notes.append(
-                Bpm(
-                    beat=round(data[EngineArchetypeDataName.Beat], 6),
-                    bpm=data[EngineArchetypeDataName.Bpm],
-                )
-            )
-            has_bpm = True
-            continue
-
-        # TimeScale
-        if archetype == EngineArchetypeName.TimeScaleChange:
-            group = TimeScaleGroup()
-            group.append(
-                TimeScalePoint(
-                    beat=round(data[EngineArchetypeDataName.Beat], 6),
-                    timeScale=data[EngineArchetypeDataName.TimeScale],
-                )
-            )
-            notes.append(group)
-            continue
-
-        # Single / Tap / Flick / Trace Notes (non-slide)
-        if "Note" in archetype and "Slide" not in archetype:
-            critical, trace = reverse_single_archetype(archetype)
-            notes.append(
-                Single(
-                    beat=round(data[EngineArchetypeDataName.Beat], 6),
-                    critical=critical,
-                    lane=data.get("lane", 0),
-                    size=data.get("size", 1),
-                    trace=trace,
-                    direction=(
-                        directions[data["direction"]]
-                        if data.get("direction") is not None
-                        else None
-                    ),
-                    timeScaleGroup=0,
-                )
-            )
-            continue
-
-        # handle slides in second pass
-        if (
-            "Slide" in archetype
-            or "Connector" in archetype
-            or archetype.endswith("TickNote")
-            or "AttachedSlide" in archetype
-        ):
-            slide_related_raw.append(entity)
-            continue
-
-    from collections import defaultdict
-
-    # Helper to get the data map for an entity (value or ref)
-    def entity_data_map(entity_raw: dict) -> dict:
-        m = {}
+    def entity_data_map(entity_raw: Dict[str, Any]) -> Dict[str, Any]:
+        m: Dict[str, Any] = {}
         for d in entity_raw.get("data", []):
             if "value" in d:
                 m[d["name"]] = d["value"]
@@ -149,248 +65,414 @@ def load(fp: IO) -> Score:
                 m[d["name"]] = d["ref"]
         return m
 
-    # collect connector entities (raw) and store parsed data map alongside
+    notes: List[Any] = []
+    has_bpm = False
+
+    beat_key = (
+        EngineArchetypeDataName.Beat
+        if hasattr(EngineArchetypeDataName, "Beat")
+        else "beat"
+    )
+    bpm_key = (
+        EngineArchetypeDataName.Bpm
+        if hasattr(EngineArchetypeDataName, "Bpm")
+        else "bpm"
+    )
+
+    directions = {-1: "left", 0: "up", 1: "right"}
+
+    slide_related_raw: List[Dict[str, Any]] = []
+
+    for ent in entities_raw:
+        arch = ent.get("archetype")
+        if not arch:
+            continue
+        if arch == "SimLine":
+            continue
+        if arch == EngineArchetypeName.BpmChange:
+            d = entity_data_map(ent)
+            beat = d.get(beat_key, d.get("beat", 0.0))
+            bpm = d.get(bpm_key, d.get("bpm", 160.0))
+            notes.append(Bpm(beat=round(beat, 6), bpm=bpm))
+            has_bpm = True
+            continue
+        if arch == EngineArchetypeName.TimeScaleChange:
+            d = entity_data_map(ent)
+            beat = d.get(beat_key, d.get("beat", 0.0))
+            ts = d.get(EngineArchetypeDataName.TimeScale, d.get("timeScale", 1.0))
+            notes.append(
+                TimeScaleGroup(changes=[TimeScalePoint(beat=beat, timeScale=ts)])
+            )
+            continue
+        if "Note" in arch and "Slide" not in arch:
+            d = entity_data_map(ent)
+            beat = d.get(beat_key, d.get("beat", None))
+            if beat is None:
+                continue
+            critical = "Critical" in arch
+            trace = "Trace" in arch
+            lane = d.get("lane", 0)
+            size = d.get("size", 1)
+            dir_val = d.get("direction", None)
+            direction = directions.get(dir_val) if dir_val is not None else None
+            notes.append(
+                Single(
+                    beat=round(beat, 6),
+                    lane=lane,
+                    size=size,
+                    critical=critical,
+                    trace=trace,
+                    timeScaleGroup=0,
+                    direction=direction,
+                )
+            )
+            continue
+        if (
+            "Slide" in arch
+            or "Connector" in arch
+            or arch.endswith("TickNote")
+            or "AttachedSlide" in arch
+        ):
+            slide_related_raw.append(ent)
+            continue
+
+    if not has_bpm:
+        notes.insert(0, Bpm(beat=round(0.0, 6), bpm=160.0))
+
     connector_raws = [
         e
         for e in slide_related_raw
         if e.get("archetype") and "Connector" in e.get("archetype")
     ]
-
-    # store list of tuples (raw_entity, data_map) keyed by (start_ref, end_ref)
-    connectors_by_slide = defaultdict(list)
+    connectors_by_slide: Dict[
+        Tuple[str, str], List[Tuple[Dict[str, Any], Dict[str, Any]]]
+    ] = defaultdict(list)
     for conn in connector_raws:
-        data_map = entity_data_map(conn)
-        start_ref = data_map.get("start")
-        end_ref = data_map.get("end")
-        # only group if both refs exist
-        if start_ref and end_ref:
-            connectors_by_slide[(start_ref, end_ref)].append((conn, data_map))
+        cmap = entity_data_map(conn)
+        # assume start/end are stored as simple strings (no dict fallback)
+        start_ref = cmap.get("start")
+        end_ref = cmap.get("end")
+        if not start_ref or not end_ref:
+            continue
+        connectors_by_slide[(start_ref, end_ref)].append((conn, cmap))
 
-    # helper to build a joint/point object from a raw entity
-    def raw_to_point(raw):
+    def raw_to_joint_info(raw: Dict[str, Any]) -> Dict[str, Any]:
         arch = raw.get("archetype", "")
-        beat = get_field_raw(raw, EngineArchetypeDataName.Beat)
-        beat = round(beat, 6) if isinstance(beat, (int, float)) else None
-        lane = get_field_raw(raw, "lane")
-        size = get_field_raw(raw, "size")
-        # NOTE: joint-level ease is a fallback — connector entities usually carry the real ease
-        ease_val = get_field_raw(raw, "ease")
-        ease_name = eases.get(ease_val) if ease_val is not None else "linear"
+        d = entity_data_map(raw)
+        beat = d.get(beat_key, d.get("beat", None))
+        if isinstance(beat, (int, float)):
+            beat = round(beat, 6)
+        lane = d.get("lane")
+        size = d.get("size")
+        ease_val = d.get("ease", None)
+        ease_joint = None
+        if ease_val is not None:
+            if isinstance(ease_val, str):
+                ease_joint = ease_val
+            else:
+                ease_joint = _PJ_EASES_INV.get(ease_val)
         critical = "Critical" in arch
-        # judgeType: guess from archetype
-        if "Trace" in arch:
-            judgeType = "trace"
-        elif "IgnoredSlideTickNote" in arch:
-            judgeType = "none"
-        else:
-            judgeType = "normal"
-
+        judgeType = (
+            "trace"
+            if "Trace" in arch
+            else ("none" if "IgnoredSlideTickNote" in arch else "normal")
+        )
         return {
             "arch": arch,
             "beat": beat,
             "lane": lane,
             "size": size,
-            "ease": ease_name,
+            "ease_joint": ease_joint,
             "critical": critical,
             "judgeType": judgeType,
         }
 
-    # Now iterate slide groups and create Slide or Guide objects
+    results_slides: List[Slide] = []
+    results_guides: List[Guide] = []
+
     for (start_ref, end_ref), conns in connectors_by_slide.items():
-        # conns is list of (conn_raw_entity, data_map)
-        first_conn_raw, first_conn_map = conns[0]
-        first_conn_arch = first_conn_raw.get("archetype", "")
-        active = "Active" in first_conn_arch
-        slide_critical = "Critical" in first_conn_arch
-
-        # Build map of connector metadata keyed by (head_ref, tail_ref)
-        # connector_meta[(head_ref, tail_ref)] = {"ease_val": ..., "arch": ...}
-        connector_meta = {}
-        for conn_raw, conn_map in conns:
-            head_ref = conn_map.get("head")
-            tail_ref = conn_map.get("tail")
-            ease_val = conn_map.get("ease")  # numeric -1/0/1 in exporter
+        connector_meta: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        connector_order: List[Tuple[str, str]] = []
+        for c_raw, c_map in conns:
+            head_ref = c_map.get("head")
+            tail_ref = c_map.get("tail")
+            if head_ref is None or tail_ref is None:
+                continue
             connector_meta[(head_ref, tail_ref)] = {
-                "ease_val": ease_val,
-                "arch": conn_raw.get("archetype", ""),
+                "ease_val": c_map.get("ease", None),
+                "archetype": c_raw.get("archetype", ""),
             }
+            connector_order.append((head_ref, tail_ref))
 
-        # Collect joint refs used by connectors (head/tail), and include start & end refs themselves
-        joint_refs = []
-        for conn_raw, conn_map in conns:
-            head = conn_map.get("head")
-            tail = conn_map.get("tail")
-            if head:
-                joint_refs.append(head)
-            if tail:
-                joint_refs.append(tail)
-        # include start/end themselves (they are refs to start/end entities)
-        joint_refs.append(start_ref)
-        joint_refs.append(end_ref)
-        # unique and preserve insertion order
-        unique_joint_refs = list(dict.fromkeys(joint_refs))
+        head_to_tails: Dict[str, List[str]] = defaultdict(list)
+        for h, t in connector_order:
+            head_to_tails[h].append(t)
 
-        # expand to raw entities and sort by beat (some hidden ticks may only have beat)
-        joint_raws = []
-        for ref in unique_joint_refs:
-            raw = ref_to_raw.get(ref)
-            if raw:
-                joint_raws.append((ref, raw_to_point(raw)))
-        # if there are less than 2 joint points, nothing meaningful to build
-        if len(joint_raws) < 2:
+        chain_refs: List[str] = []
+        cur = start_ref
+        chain_refs.append(cur)
+        visited = {cur}
+        loop_guard = 0
+        while True:
+            loop_guard += 1
+            if loop_guard > 5000:
+                raise RuntimeError(
+                    f"Infinite loop reconstructing connectors for slide {start_ref}->{end_ref}"
+                )
+            if cur == end_ref:
+                break
+            tails = head_to_tails.get(cur, [])
+            if not tails:
+                break
+            next_ref = None
+            for t in tails:
+                if t not in visited:
+                    next_ref = t
+                    break
+            if next_ref is None:
+                next_ref = tails[0]
+            if next_ref in visited:
+                chain_refs.append(next_ref)
+                break
+            chain_refs.append(next_ref)
+            visited.add(next_ref)
+            cur = next_ref
+
+        if chain_refs[-1] != end_ref:
             continue
-        joint_raws.sort(key=lambda x: (x[1]["beat"] if x[1]["beat"] is not None else 0))
 
-        # build connection objects in beat order
-        connections_list = []
-        n_joints = len(joint_raws)
-        for idx, (ref, info) in enumerate(joint_raws):
-            arch = info["arch"]
+        joint_info_list: List[Tuple[str, Dict[str, Any]]] = []
+        missing_raw = False
+        for r in chain_refs:
+            raw = ref_to_raw.get(r)
+            if raw is None:
+                missing_raw = True
+                break
+            joint_info_list.append((r, raw_to_joint_info(raw)))
+        if missing_raw or len(joint_info_list) < 2:
+            continue
 
-            # Determine connector-provided ease:
-            # 1) try incoming connector (prev -> ref)
-            # 2) else try outgoing connector (ref -> next)
-            # 3) else fall back to joint ease or "linear"
-            ease_name_for_this = None
+        n = len(joint_info_list)
+        connections_list: List[Any] = []
 
-            if idx > 0:
-                prev_ref = joint_raws[idx - 1][0]
-                incoming = connector_meta.get((prev_ref, ref))
-                if incoming:
-                    ease_name_for_this = eases.get(incoming.get("ease_val"))
-            if ease_name_for_this is None and idx < n_joints - 1:
-                next_ref = joint_raws[idx + 1][0]
-                outgoing = connector_meta.get((ref, next_ref))
-                if outgoing:
-                    ease_name_for_this = eases.get(outgoing.get("ease_val"))
+        def get_authoritative_connector_for(head_ref: str, tail_ref: Optional[str]):
+            if tail_ref is not None and (head_ref, tail_ref) in connector_meta:
+                return connector_meta[(head_ref, tail_ref)]
+            for h, t in connector_order:
+                if h == head_ref:
+                    return connector_meta.get((h, t))
+            return None
 
-            # joint fallback (rare): use info["ease"] if present
-            if ease_name_for_this is None:
-                if info.get("ease") is not None:
-                    ease_name_for_this = info.get("ease")
-                else:
-                    ease_name_for_this = "linear"  # last resort default
+        first_conn_arch = conns[0][0].get("archetype", "") if conns else ""
+        slide_is_critical_from_connector = "Critical" in first_conn_arch
 
+        for idx, (ref, info) in enumerate(joint_info_list):
             is_first = idx == 0
-            is_last = idx == n_joints - 1
+            is_last = idx == n - 1
 
-            # If this is the first joint and it represents a non-ignored note => SlideStartPoint
+            beat = info.get("beat")
+            if (is_first or is_last) and beat is None:
+                which = "start" if is_first else "end"
+                raise RuntimeError(
+                    f"{which.capitalize()} point for slide ({start_ref}->{end_ref}) missing beat."
+                )
+            if is_first and info.get("lane") is None:
+                raise RuntimeError(
+                    f"Start point for slide ({start_ref}->{end_ref}) missing lane."
+                )
+            if is_first and info.get("size") is None:
+                raise RuntimeError(
+                    f"Start point for slide ({start_ref}->{end_ref}) missing size."
+                )
+            if is_last and info.get("lane") is None:
+                raise RuntimeError(
+                    f"End point for slide ({start_ref}->{end_ref}) missing lane."
+                )
+            if is_last and info.get("size") is None:
+                raise RuntimeError(
+                    f"End point for slide ({start_ref}->{end_ref}) missing size."
+                )
+
+            if is_last:
+                ease_name = "linear"
+            else:
+                next_ref = joint_info_list[idx + 1][0]
+                meta = get_authoritative_connector_for(ref, next_ref)
+                ease_name = None
+                if meta is not None:
+                    ev = meta.get("ease_val")
+                    if isinstance(ev, str):
+                        ease_name = ev
+                    else:
+                        ease_name = _PJ_EASES_INV.get(ev)
+                if ease_name is None:
+                    ease_name = info.get("ease_joint")
+                if ease_name is None:
+                    raise RuntimeError(
+                        f"Missing ease for joint '{ref}' (slide {start_ref}->{end_ref})."
+                    )
+
+            lane = info.get("lane")
+            size = info.get("size")
+            if lane is None or size is None:
+                prev_lane = None
+                prev_size = None
+                for j in range(idx - 1, -1, -1):
+                    pl = joint_info_list[j][1].get("lane")
+                    ps = joint_info_list[j][1].get("size")
+                    if prev_lane is None and pl is not None:
+                        prev_lane = pl
+                    if prev_size is None and ps is not None:
+                        prev_size = ps
+                    if prev_lane is not None and prev_size is not None:
+                        break
+                if prev_lane is None:
+                    prev_lane = joint_info_list[0][1].get("lane")
+                if prev_size is None:
+                    prev_size = joint_info_list[0][1].get("size")
+                lane = lane if lane is not None else prev_lane
+                size = size if size is not None else prev_size
+
             if is_first and info.get("judgeType") != "none":
+                auth_meta = get_authoritative_connector_for(
+                    ref, joint_info_list[idx + 1][0]
+                )
+                if auth_meta is None:
+                    raise RuntimeError(
+                        f"No connector with head == start for slide start '{ref}' (slide {start_ref}->{end_ref})."
+                    )
+                start_raw = ref_to_raw.get(ref, {})
+                start_arch = start_raw.get("archetype", "") if start_raw else ""
+                conn_arch = auth_meta.get("archetype", "") if auth_meta else ""
+                start_critical = ("Critical" in start_arch) or ("Critical" in conn_arch)
+                judgeType = info.get("judgeType")
                 sp = SlideStartPoint(
-                    type="start",
-                    beat=info["beat"],
-                    lane=info["lane"] if info["lane"] is not None else 0,
-                    size=info["size"] if info["size"] is not None else 1,
-                    ease=ease_name_for_this,
-                    judgeType=info["judgeType"],
-                    critical=info["critical"],
+                    beat=round(beat, 6),
+                    critical=start_critical,
+                    ease=ease_name,
+                    judgeType=judgeType,
+                    lane=lane,
+                    size=size,
                     timeScaleGroup=0,
                 )
                 connections_list.append(sp)
                 continue
 
-            # If this is the last joint and it represents a non-ignored note => SlideEndPoint
             if is_last and info.get("judgeType") != "none":
                 raw = ref_to_raw.get(ref, {})
                 dir_val = get_field_raw(raw, "direction")
-                dir_name = directions.get(dir_val) if dir_val is not None else None
+                direction = directions.get(dir_val) if dir_val is not None else None
+                end_critical = "Critical" in info.get("arch", "")
                 ep = SlideEndPoint(
-                    type="end",
-                    beat=info["beat"],
-                    lane=info["lane"] if info["lane"] is not None else 0,
-                    size=info["size"] if info["size"] is not None else 1,
-                    judgeType=info["judgeType"],
-                    critical=info["critical"],
-                    direction=dir_name,
+                    beat=round(beat, 6),
+                    critical=end_critical,
+                    judgeType=info.get("judgeType"),
+                    lane=lane,
+                    size=size,
                     timeScaleGroup=0,
+                    direction=direction,
                 )
                 connections_list.append(ep)
                 continue
 
-            # Other cases: hidden, attach, tick or ignored tick
-            if "HiddenSlideTickNote" in arch or "HiddenSlide" in arch:
-                pass  # generated on export
+            arch = info.get("arch", "")
 
-            elif (
+            if "HiddenSlideTickNote" in arch or "HiddenSlide" in arch:
+                # per this exporter Hidden = skip
+                continue
+
+            if "IgnoredSlideTickNote" in arch:
+                rp = SlideRelayPoint(
+                    beat=round(beat, 6) if beat is not None else 0.0,
+                    ease=ease_name,
+                    lane=lane,
+                    size=size,
+                    timeScaleGroup=0,
+                    type="tick",
+                    critical=None,
+                )
+                connections_list.append(rp)
+                continue
+
+            if (
                 "AttachedSlide" in arch
                 or "AttachedSlideTickNote" in arch
                 or "Attached" in arch
             ):
                 rp = SlideRelayPoint(
+                    beat=round(beat, 6) if beat is not None else 0.0,
+                    ease=ease_name,
+                    lane=lane,
+                    size=size,
+                    timeScaleGroup=0,
                     type="attach",
-                    beat=info["beat"],
-                    lane=None,
-                    size=None,
-                    ease=None,
-                    timeScaleGroup=0,
-                    critical=info["critical"],
+                    critical=info.get("critical"),
                 )
                 connections_list.append(rp)
+                continue
 
-            elif (
-                "TickNote" in arch
-                or "SlideTick" in arch
-                or "SlideConnector" in arch
-                or "IgnoredSlideTickNote" in arch
-            ):
+            if "TickNote" in arch or "SlideTick" in arch or "Tick" in arch:
                 rp = SlideRelayPoint(
-                    type="tick",
-                    beat=info["beat"],
-                    lane=info["lane"] if info["lane"] is not None else 0,
-                    size=info["size"] if info["size"] is not None else 1,
-                    ease=(
-                        ease_name_for_this
-                        if ease_name_for_this is not None
-                        else "linear"
-                    ),
+                    beat=round(beat, 6) if beat is not None else 0.0,
+                    ease=ease_name,
+                    lane=lane,
+                    size=size,
                     timeScaleGroup=0,
-                    critical=(
-                        None if "IgnoredSlideTickNote" in arch else info["critical"]
-                    ),
+                    type="tick",
+                    critical=info.get("critical"),
                 )
                 connections_list.append(rp)
-            else:
-                # fallback: treat as a tick-relay with resolved ease
-                rp = SlideRelayPoint(
-                    type="tick",
-                    beat=info["beat"],
-                    lane=info["lane"] if info["lane"] is not None else 0,
-                    size=info["size"] if info["size"] is not None else 1,
-                    ease=(
-                        ease_name_for_this
-                        if ease_name_for_this is not None
-                        else "linear"
-                    ),
-                    timeScaleGroup=0,
-                    critical=info["critical"],
-                )
-                connections_list.append(rp)
+                continue
 
-        # convert all slides without a start/end to guides
+            rp = SlideRelayPoint(
+                beat=round(beat, 6) if beat is not None else 0.0,
+                ease=ease_name,
+                lane=lane,
+                size=size,
+                timeScaleGroup=0,
+                type="tick",
+                critical=info.get("critical"),
+            )
+            connections_list.append(rp)
+
         contains_start_or_end = any(
             getattr(c, "type", None) in ("start", "end") for c in connections_list
         )
-        if not active and not contains_start_or_end:
-            midpoints = []
+
+        if not contains_start_or_end and ("Active" not in first_conn_arch):
+            midpoints: List[GuidePoint] = []
             for c in connections_list:
                 if isinstance(c, SlideRelayPoint) and c.type == "tick":
                     gp = GuidePoint(
                         beat=round(c.beat, 6),
                         lane=getattr(c, "lane", 0),
                         size=getattr(c, "size", 1),
-                        ease=getattr(c, "ease", "linear"),
                         timeScaleGroup=0,
+                        ease=getattr(c, "ease", "linear"),
                     )
                     midpoints.append(gp)
-            color = "yellow" if slide_critical else "green"
-            guide = Guide(midpoints=midpoints, color=color, fade="none")
-            notes.append(guide)
+            if midpoints:
+                midpoints[-1].ease = "linear"
+                color = "yellow" if slide_is_critical_from_connector else "green"
+                results_guides.append(
+                    Guide(midpoints=midpoints, color=color, fade="none")
+                )
             continue
 
-        slide = Slide(critical=slide_critical, connections=connections_list)
-        notes.append(slide)
+        if not connections_list:
+            continue
+        start_pts = [c for c in connections_list if getattr(c, "type", None) == "start"]
+        if not start_pts:
+            continue
+        start_point = start_pts[0]
+        slide_critical = bool(getattr(start_point, "critical", False))
+        slide_obj = Slide(critical=slide_critical, connections=connections_list)
+        slide_obj.sort()
+        results_slides.append(slide_obj)
 
-    if not has_bpm:
-        notes.insert(0, Bpm(beat=round(0, 6), bpm=160.0))
+    notes.extend(results_slides)
+    notes.extend(results_guides)
 
-    return Score(metadata=metadata, notes=notes)
+    score = Score(metadata=metadata, notes=notes)
+    score.sort_by_beat()
+    return score
