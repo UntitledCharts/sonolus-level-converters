@@ -8,7 +8,7 @@ Any file type listed here supports conversions between and from.
 - `.usc`
 - `.sus`
 
-(guides + hold mids are broken)
+(hold mids are broken)
 - `chart_cyanvas LevelData` - (returns a identical copy of the original usc, except without time signatures)
 
 # Partial Support
@@ -19,6 +19,10 @@ Any file type listed here will have some support.
 
 # Utils/Helpers
 - Strip ChCy Extended Features
+
+# Known Issues
+- Chart Cyanvas LevelData loading is broken with holds. Converting a Score made from this to sus makes a invalid hold. Converting a Score made from this to usc has extra hold mids.
+- PJSK LevelData is not tested and likely wrong.
 
 # ToDo
 - pjsekai LevelData (from)
