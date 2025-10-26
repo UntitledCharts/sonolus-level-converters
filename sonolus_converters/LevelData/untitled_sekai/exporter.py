@@ -9,17 +9,18 @@ import math
 import base36
 
 from ...notes.score import Score
-from ...notes.metadata import MetaData
 from ...notes.bpm import Bpm
-from ...notes.timescale import TimeScaleGroup, TimeScalePoint
+from ...notes.timescale import TimeScaleGroup
 from ...notes.single import Single
-from ...notes.slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
-from ...notes.guide import Guide, GuidePoint
+from ...notes.slide import Slide, SlideRelayPoint
+from ...notes.guide import Guide
 
 from ...notes.engine.archetypes import EngineArchetypeName, EngineArchetypeDataName
 from ...notes.engine.level import LevelData, LevelDataEntity
 
 from ...utils import SinglePrecisionFloatEncoder
+
+EPSILON = 1e-6
 
 
 @dataclass
@@ -268,14 +269,16 @@ def export(
         beats = sorted(c.beat for c in connections)
         min_beat, max_beat = beats[0], beats[-1]
         start = max(
-            math.ceil(min_beat / 0.5) * 0.5,
-            math.floor(min_beat / 0.5 + 1) * 0.5,
+            math.ceil((min_beat - EPSILON) / 0.5) * 0.5,
+            math.floor((min_beat + EPSILON) / 0.5 + 1) * 0.5,
         )
-        num_steps = int((max_beat - start) / 0.5)
+        num_steps = int(math.floor((max_beat - start) / 0.5 + EPSILON))
 
         # Generate beats
         for i in range(num_steps):
-            beat = start + i * 0.5
+            beat = round(start + i * 0.5, 9)  # round to prevent float drift
+            if beat + EPSILON >= max_beat:
+                break
             connections.append(
                 SlideRelayPoint(
                     beat=beat,

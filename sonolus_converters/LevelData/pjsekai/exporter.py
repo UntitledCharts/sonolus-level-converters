@@ -2,22 +2,23 @@ import json, gzip
 from dataclasses import dataclass, asdict
 from pathlib import Path
 import io
-from typing import Dict, List, Union, Optional, Callable, Literal, IO
+from typing import Dict, List, Union, Optional, Literal, IO
 
 import base36
 
 from ...notes.score import Score
-from ...notes.metadata import MetaData
 from ...notes.bpm import Bpm
-from ...notes.timescale import TimeScaleGroup, TimeScalePoint
+from ...notes.timescale import TimeScaleGroup
 from ...notes.single import Single
-from ...notes.slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
-from ...notes.guide import Guide, GuidePoint
+from ...notes.slide import Slide, SlideRelayPoint
+from ...notes.guide import Guide
 
 from ...notes.engine.archetypes import EngineArchetypeName, EngineArchetypeDataName
 from ...notes.engine.level import LevelData, LevelDataEntity
 
 from ...utils import SinglePrecisionFloatEncoder
+
+EPSILON = 1e-6
 
 
 @dataclass
@@ -122,19 +123,17 @@ def export(
 
         connections = note.connections.copy()
 
-        beats = [connection.beat for connection in connections]
-        beats.sort()
-
-        min_beat = beats[0]
-        max_beat = beats[-1]
+        beats = sorted(connection.beat for connection in connections)
+        min_beat, max_beat = beats[0], beats[-1]
 
         # Calculate the start beat (next multiple of 0.5)
-        start = max(round(min_beat / 0.5) * 0.5, (round(min_beat / 0.5 + 1) * 0.5))
+        start = max(round(min_beat / 0.5) * 0.5, round((min_beat / 0.5 + 1)) * 0.5)
 
-        # Add "hidden" connections for beats that are missing
         beat = start
-        while beat < max_beat:
-            connections.append(HiddenSlideRelayPoint(beat=beat, type="hidden"))
+        while beat < max_beat - EPSILON:
+            # round to avoid cumulative float drift
+            safe_beat = round(beat, 9)
+            connections.append(HiddenSlideRelayPoint(beat=safe_beat, type="hidden"))
             beat += 0.5
 
         # Sort by beat

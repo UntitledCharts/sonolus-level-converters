@@ -24,6 +24,8 @@ from ...notes.score import Score
 
 from ...utils import SinglePrecisionFloatEncoder
 
+EPSILON = 1e-6
+
 
 def assert_never(arg: NoReturn) -> NoReturn:
     raise AssertionError("Expected code to be unreachable")
@@ -313,11 +315,11 @@ def export(
                         attach["attachHead"] = prev_joint_entity
                         attach["attachTail"] = entity
                     queued_attach_notes.clear()
-                    while next_hidden_tick_beat < entity["#BEAT"]:
+                    while next_hidden_tick_beat + EPSILON < entity["#BEAT"]:
                         hidden_tick = Entity(
                             "TransientHiddenTickNote",
                             {
-                                "#BEAT": next_hidden_tick_beat,
+                                "#BEAT": round(next_hidden_tick_beat, 9),
                                 "#TIMESCALE_GROUP": timescale_group_entities[0],
                                 "lane": entity["lane"],
                                 "size": entity["size"],
