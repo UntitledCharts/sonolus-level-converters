@@ -132,7 +132,7 @@ def dumps(
     lines.append("")
 
     # Scoredata
-    note_maps = defaultdict(lambda: {"raws": [], "ticks_per_measure": 0})
+    note_maps = defaultdict(lambda: {"raws": [], "ticks_per_measure": 0, "til": None})
 
     bar_lengths = sorted(score.bar_lengths, key=lambda x: x[0])
     bpms = sorted(score.bpms, key=lambda x: x[0])
@@ -158,15 +158,19 @@ def dumps(
 
     bar_lengths_in_ticks.reverse()
 
-    def push_raw(tick: int, info: str, data: str):
+    def push_raw(tick: int, info: str, data: str, til: int = 0):
         for bar_length in bar_lengths_in_ticks:
             if tick >= bar_length.start_tick:
                 current_measure = bar_length.measure + int(
                     (tick - bar_length.start_tick) / ticks_per_beat / bar_length.value
                 )
                 note_map = note_maps[f"{current_measure:03}{info}"]
-                note_map["raws"].append([tick - bar_length.start_tick, data])
+                # store raw as [offset, data, til]
+                note_map["raws"].append([tick - bar_length.start_tick, data, til])
                 note_map["ticks_per_measure"] = int(bar_length.value * ticks_per_beat)
+                # if til for this tag hasn't been set yet, set it from the first raw
+                if note_map["til"] is None:
+                    note_map["til"] = til
                 break
 
     if len(bpms) >= 36**2 - 1:
@@ -178,7 +182,7 @@ def dumps(
         if value not in bpm_identifiers:
             bpm_identifiers[value] = identifier
             lines.append(f"#BPM{bpm_identifiers[value]}: {format_number(value)}")
-        push_raw(tick, "08", bpm_identifiers[value])
+        push_raw(tick, "08", bpm_identifiers[value], 0)
     lines.append("")
 
     # ハイスピ(dumper側は変拍子対応が不要のため未対応)
@@ -196,22 +200,27 @@ def dumps(
             + f"{', '.join(til_list)}"
             + '"'
         )
+    # default hispeed at start remains 00
     lines.append("#HISPEED 00")
     lines.append("#MEASUREHS 00")
     lines.append("")
 
     for note in taps:
+        # taps have .til (always an int)
         push_raw(
             note.tick,
             f"1{base36.dumps(note.lane)}",
             f"{note.type}{base36.dumps(note.width)}",
+            note.til,
         )
 
     for note in directionals:
+        # directionals now also have .til
         push_raw(
             note.tick,
             f"5{base36.dumps(note.lane)}",
             f"{note.type}{base36.dumps(note.width)}",
+            note.til,
         )
 
     slide_provider = ChannelProvider()
@@ -219,11 +228,14 @@ def dumps(
         start_tick = steps[0].tick
         end_tick = steps[-1].tick
         channel = slide_provider.generate_channel(start_tick, end_tick)
+        # TIL for a slide/stream is taken from the first step/relay (always present)
+        slide_til = steps[0].til
         for note in steps:
             push_raw(
                 note.tick,
                 f"3{base36.dumps(note.lane)}{base36.dumps(channel)}",
                 f"{note.type}{base36.dumps(note.width)}",
+                slide_til,
             )
 
     # ガイドノーツに対応
@@ -232,20 +244,36 @@ def dumps(
         start_tick = steps[0].tick
         end_tick = steps[-1].tick
         channel = guide_provider.generate_channel(start_tick, end_tick)
+        # TIL for a guide is taken from the first step/relay (always present)
+        guide_til = steps[0].til
         for note in steps:
             push_raw(
                 note.tick,
                 f"9{base36.dumps(note.lane)}{base36.dumps(channel)}",
                 f"{note.type}{base36.dumps(note.width)}",
+                guide_til,
             )
 
+    # Emit note maps, inserting #HISPEED changes before chart lines as needed.
+    current_hispeed = "00"  # matches the default emitted earlier
     for tag, note_map in note_maps.items():
         gcd = note_map["ticks_per_measure"]
         for raw in note_map["raws"]:
             gcd = math.gcd(raw[0], gcd)
         data = {}
         for raw in note_map["raws"]:
+            # raw layout: [offset, data, til]
             data[(raw[0] % note_map["ticks_per_measure"])] = raw[1]
+
+        # Determine til for this chart line (from note_map["til"], default 0)
+        til_num = note_map["til"] or 0
+        til_b36 = base36.dumps(til_num).zfill(2).upper()
+
+        # Insert HISPEED line if it changes
+        if til_b36 != current_hispeed:
+            lines.append(f"#HISPEED {til_b36}")
+            current_hispeed = til_b36
+
         values = []
         for i in range(0, note_map["ticks_per_measure"], gcd):
             values.append(data.get(i) or "00")
