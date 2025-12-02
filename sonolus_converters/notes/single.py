@@ -14,22 +14,22 @@ class Skill:
 
 
 @dataclass(kw_only=True)
-class FeverStart:
+class FeverChance:
     # lane: int = 15
     # width: int = 1
     beat: float
-    type: Literal["fever1"] = "fever1"
+    type: Literal["feverChance"] = "feverChance"
 
     def get_sus_sort_number(self) -> int:
         return 3
 
 
 @dataclass(kw_only=True)
-class FeverEnd:
+class FeverStart:
     # lane: int = 15
     # width: int = 1
     beat: float
-    type: Literal["fever2"] = "fever2"
+    type: Literal["feverStart"] = "feverStart"
 
     def get_sus_sort_number(self) -> int:
         return 3
@@ -53,11 +53,11 @@ class Single:
 
 def validate_event_dict_values(data: dict) -> tuple | None:
     if not isinstance(data, dict):
-        return data, "Expected a dictionary for FeverStart/FeverEnd/Skill"
+        return data, "Expected a dictionary for FeverStart/FeverChance/Skill"
     if (
         "type" in data
         and not isinstance(data["type"], str)
-        and not data["type"] in ["skill", "fever1", "fever2"]
+        and not data["type"] in ["skill", "feverStart", "feverChance"]
     ):
         return data, "'type' should be a string"
     if "beat" not in data or not isinstance(data["beat"], (int, float)):

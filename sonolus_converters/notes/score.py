@@ -5,7 +5,7 @@ from .timescale import TimeScaleGroup, validate_timescale_dict_values
 from .single import (
     Single,
     Skill,
-    FeverEnd,
+    FeverChance,
     FeverStart,
     validate_single_dict_values,
     validate_event_dict_values,
@@ -113,7 +113,7 @@ def _check_slide(
             Single
             | Skill
             | FeverStart
-            | FeverEnd
+            | FeverChance
             | SlideStartPoint
             | SlideRelayPoint
             | SlideEndPoint
@@ -253,7 +253,7 @@ class InvalidNoteError(Exception):
 class Score:
     metadata: MetaData
     notes: list[
-        Bpm | TimeScaleGroup | Single | Skill | FeverStart | FeverEnd | Slide | Guide
+        Bpm | TimeScaleGroup | Single | Skill | FeverStart | FeverChance | Slide | Guide
     ]
 
     def validate(self) -> bool:
@@ -264,7 +264,7 @@ class Score:
 
         for note in self.notes:
             note_dict = asdict(note)
-            if isinstance(note, (Skill, FeverStart, FeverEnd)):
+            if isinstance(note, (Skill, FeverStart, FeverChance)):
                 validation_result = validate_event_dict_values(note_dict)
                 if validation_result:
                     note_dict, error_message = validation_result
@@ -409,7 +409,7 @@ class Score:
             if (
                 isinstance(note, Bpm)
                 or isinstance(note, TimeScaleGroup)
-                or isinstance(note, (Skill, FeverStart, FeverEnd))
+                or isinstance(note, (Skill, FeverStart, FeverChance))
             ):
                 continue
             if isinstance(note, Single):
@@ -542,7 +542,7 @@ class Score:
             if (
                 isinstance(note, Bpm)
                 or isinstance(note, TimeScaleGroup)
-                or isinstance(note, (Skill, FeverStart, FeverEnd))
+                or isinstance(note, (Skill, FeverStart, FeverChance))
             ):
                 continue
 

@@ -4,7 +4,7 @@ from ..notes.score import Score
 from ..notes.metadata import MetaData
 from ..notes.bpm import Bpm
 from ..notes.timescale import TimeScaleGroup, TimeScalePoint
-from ..notes.single import Single, Skill, FeverEnd, FeverStart
+from ..notes.single import Single, Skill, FeverChance, FeverStart
 from ..notes.slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
 from ..notes.guide import Guide, GuidePoint
 from .notetype import SusNoteType
@@ -218,14 +218,13 @@ def load(fp: TextIO) -> Score:
         notes.append(guide_note)
 
     # タップ、フリック系
+    fever_chance = None
     fever_start = None
-    fever_end = None
     for note in sorted(sus_score.taps, key=lambda x: x.tick):
         if (
             note.type == SusNoteType.Tap.SKILL and note.width == 1 and note.lane == 0
         ):  # (4) SKILL ACTIVATIONS (or damage notes in Chunithm)
             notes.append(Skill(beat=_tick_to_beat(note.tick)))
-            skill_count += 1
             continue
         elif note.type == SusNoteType.Tap.SKILL:
             continue  # what's that doing there?
@@ -236,16 +235,18 @@ def load(fp: TextIO) -> Score:
             and note.type in [SusNoteType.Tap.TAP, SusNoteType.Tap.C_TAP]
         ):
             if note.type == SusNoteType.Tap.TAP:
+                if fever_chance:
+                    raise AttributeError("Can only have 1 fever chance per chart.")
+                notes.append(FeverChance(beat=_tick_to_beat(note.tick)))
+                fever_chance = _tick_to_beat(note.tick)
+            else:
                 if fever_start:
-                    raise AttributeError("Can only have 1 fever start per chart.")
+                    raise AttributeError(
+                        "Can only have 1 fever start (end of chance) per chart."
+                    )
                 notes.append(FeverStart(beat=_tick_to_beat(note.tick)))
                 fever_start = _tick_to_beat(note.tick)
-            else:
-                if fever_end:
-                    raise AttributeError("Can only have 1 fever end per chart.")
-                notes.append(FeverEnd(beat=_tick_to_beat(note.tick)))
-                fever_end = _tick_to_beat(note.tick)
-                if fever_end < fever_start:
+                if fever_start < fever_chance:
                     raise AttributeError("Fever end must be after fever start.")
             continue  # don't load them
         samepos_direction = _search_samepos_note(
@@ -269,10 +270,10 @@ def load(fp: TextIO) -> Score:
                 direction=direction,
             )
         )
-    if fever_start and not fever_end:
-        raise AttributeError("Must have a fever end if a fever start is defined.")
-    if fever_end and not fever_start:
-        raise AttributeError("Must have a fever start if a fever end is defined.")
+    if fever_chance and not fever_start:
+        raise AttributeError("Must have a fever start if a fever chance is defined.")
+    if fever_start and not fever_chance:
+        raise AttributeError("Must have a fever chance if a fever start is defined.")
     notes.sort(key=lambda x: x.get_sus_sort_number())
 
     metadata = MetaData(
