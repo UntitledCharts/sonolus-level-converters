@@ -42,6 +42,7 @@ def export(
     score: Score,
     allow_layers: bool = False,
     allow_extended_lanes: bool = False,
+    delete_damage: bool = True,
 ):
     """
     Automatically replaces extended eases and guide colors, deleting fake and damage notes.
@@ -49,6 +50,10 @@ def export(
     NOTE: also deletes extended lanes! call strip_extended_lanes with replace=True if you wish to attempt automatic replacement
 
     If you want to define your custom color map for replacing, run the .replace_extended_guide_colors with your own map.
+
+    * allow_layers allows multiple TIL layers (not supported by PJSK sus)
+    * allow_extended_lanes allows extended lanes (not supported by PJSK sus EXCEPT for skill/fever definitions. Toggle this if you need to load those from a usc)
+    * delete_damage deletes type 4 damage notes (not supported by PJSK sus EXCEPT for skill definitions. Toggle this if you need to load skills from usc)
     """
 
     def check_tsg(data_obj) -> None:
@@ -60,7 +65,8 @@ def export(
     score.replace_extended_ease()
     score.replace_extended_guide_colors()
     score.delete_fake_notes()
-    score.delete_damage_notes()
+    if delete_damage:
+        score.delete_damage_notes()
     if not allow_extended_lanes:
         score.strip_extended_lanes()
     metadata = score.metadata
@@ -116,7 +122,17 @@ def export(
             width = usc_notesize_to_sus_notesize(note.size)
             tick = beat_to_tick(note.beat)
             check_tsg(note)
-            if note.trace:  # トレース or 金トレース
+            if note.type == "damage":
+                taps.append(
+                    csus.Note(
+                        tick=tick,
+                        lane=lane,
+                        width=width,
+                        type=SusNoteType.Tap.SKILL,
+                        til=note.timeScaleGroup,
+                    )
+                )
+            elif note.trace:  # トレース or 金トレース
                 if note.critical:
                     taps.append(
                         csus.Note(
