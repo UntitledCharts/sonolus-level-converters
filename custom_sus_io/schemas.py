@@ -61,6 +61,7 @@ class Note:
     lane: int
     width: int
     type: int
+    til: int
 
 
 @dataclass_json(letter_case=LetterCase.CAMEL)
@@ -73,7 +74,7 @@ class Score:
     guides: list[list[Note]]
     bpms: list[tuple[int, float]]
     bar_lengths: list[tuple[int, float]]
-    tils: list[tuple[int, float]]
+    tils: list[list[tuple[int, float]]]
 
 
 @dataclass

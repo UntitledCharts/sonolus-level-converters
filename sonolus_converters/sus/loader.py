@@ -4,7 +4,7 @@ from ..notes.score import Score
 from ..notes.metadata import MetaData
 from ..notes.bpm import Bpm
 from ..notes.timescale import TimeScaleGroup, TimeScalePoint
-from ..notes.single import Single
+from ..notes.single import Single, Skill, FeverEnd, FeverStart
 from ..notes.slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
 from ..notes.guide import Guide, GuidePoint
 from .notetype import SusNoteType
@@ -27,10 +27,10 @@ def _sus_notesize_to_usc_notesize(width: int) -> float:
 
 # 同じ位置にあるノーツを探す
 def _search_samepos_note(
-    note_info: tuple[int, int], notes: list, remove: bool
+    note_info: tuple[int, int, int], notes: list, remove: bool
 ) -> int | None:
     for note in notes[:]:
-        if (note.tick, note.lane) == note_info:
+        if (note.tick, note.lane, note.til) == note_info:
             if remove:
                 notes.remove(note)
             return note.type
@@ -107,12 +107,13 @@ def load(fp: TextIO) -> Score:
     # ハイスピ
     exist_initial_time_scale = False
     time_scale_group = TimeScaleGroup()
-    for til in sorted(sus_score.tils, key=lambda x: x[0]):
-        if til[0] == 0:
-            exist_initial_time_scale = True
-        time_scale_group.append(
-            TimeScalePoint(beat=_tick_to_beat(til[0]), timeScale=til[1])
-        )
+    for til in sus_score.tils:
+        for change in sorted(til, key=lambda x: x[0]):
+            if change[0] == 0:
+                exist_initial_time_scale = True
+            time_scale_group.append(
+                TimeScalePoint(beat=_tick_to_beat(til[0]), timeScale=til[1])
+            )
     if not exist_initial_time_scale:
         time_scale_group.insert(0, TimeScalePoint(beat=0.0, timeScale=1.0))
     notes.append(time_scale_group)
@@ -123,10 +124,10 @@ def load(fp: TextIO) -> Score:
         slide_note = Slide(critical=False)
         for idx, point in zip(range(point_length), sorted(slide, key=lambda x: x.tick)):
             samepos_tap = _search_samepos_note(
-                (point.tick, point.lane), sus_score.taps, remove=True
+                (point.tick, point.lane, point.til), sus_score.taps, remove=True
             )
             samepos_direction = _search_samepos_note(
-                (point.tick, point.lane), sus_score.directionals, remove=True
+                (point.tick, point.lane, point.til), sus_score.directionals, remove=True
             )
             critical = _search_is_critical(samepos_tap)
             judge_type = _search_judge_type(samepos_tap)
@@ -146,7 +147,7 @@ def load(fp: TextIO) -> Score:
                         judgeType=judge_type,
                         lane=lane,
                         size=size,
-                        timeScaleGroup=0,
+                        timeScaleGroup=point.til,
                     )
                 )
             elif idx == point_length - 1:  # 終点
@@ -164,7 +165,7 @@ def load(fp: TextIO) -> Score:
                         judgeType=judge_type,
                         lane=lane,
                         size=size,
-                        timeScaleGroup=0,
+                        timeScaleGroup=point.til,
                         direction=direction,
                     )
                 )
@@ -174,7 +175,7 @@ def load(fp: TextIO) -> Score:
                     ease=ease,
                     lane=lane,
                     size=size,
-                    timeScaleGroup=0,
+                    timeScaleGroup=point.til,
                     type="tick",
                     critical=slide_note.critical,
                 )
@@ -194,10 +195,10 @@ def load(fp: TextIO) -> Score:
         guide_note = Guide(color="green", fade="out")
         for idx, point in zip(range(point_length), sorted(guide, key=lambda x: x.tick)):
             samepos_tap = _search_samepos_note(
-                (point.tick, point.lane), sus_score.taps, remove=True
+                (point.tick, point.lane, point.til), sus_score.taps, remove=True
             )
             samepos_direction = _search_samepos_note(
-                (point.tick, point.lane), sus_score.directionals, remove=True
+                (point.tick, point.lane, point.til), sus_score.directionals, remove=True
             )
             critical = _search_is_critical(samepos_tap)
             judge_type = _search_judge_type(samepos_tap)
@@ -210,23 +211,42 @@ def load(fp: TextIO) -> Score:
                 if critical:
                     guide_note.color = "yellow"
             guide_note.append(
-                GuidePoint(beat=beat, ease=ease, lane=lane, size=size, timeScaleGroup=0)
+                GuidePoint(
+                    beat=beat, ease=ease, lane=lane, size=size, timeScaleGroup=point.til
+                )
             )
         notes.append(guide_note)
 
     # タップ、フリック系
+    fever_start = None
+    fever_end = None
     for note in sorted(sus_score.taps, key=lambda x: x.tick):
         if (
-            note.type == SusNoteType.Tap.SKILL
+            note.type == SusNoteType.Tap.SKILL and note.width == 1 and note.lane == 0
         ):  # (4) SKILL ACTIVATIONS (or damage notes in Chunithm)
-            # should NOT be loaded FROM a sus file.
+            notes.append(Skill(beat=_tick_to_beat(note.tick)))
+            skill_count += 1
             continue
+        elif note.type == SusNoteType.Tap.SKILL:
+            continue  # what's that doing there?
         # fever start/end events
         if (
             note.lane == 15
             and note.width == 1
             and note.type in [SusNoteType.Tap.TAP, SusNoteType.Tap.C_TAP]
         ):
+            if note.type == SusNoteType.Tap.TAP:
+                if fever_start:
+                    raise AttributeError("Can only have 1 fever start per chart.")
+                notes.append(FeverStart(beat=_tick_to_beat(note.tick)))
+                fever_start = _tick_to_beat(note.tick)
+            else:
+                if fever_end:
+                    raise AttributeError("Can only have 1 fever end per chart.")
+                notes.append(FeverEnd(beat=_tick_to_beat(note.tick)))
+                fever_end = _tick_to_beat(note.tick)
+                if fever_end < fever_start:
+                    raise AttributeError("Fever end must be after fever start.")
             continue  # don't load them
         samepos_direction = _search_samepos_note(
             (note.tick, note.lane), sus_score.directionals, remove=True
@@ -244,11 +264,15 @@ def load(fp: TextIO) -> Score:
                 critical=critical,
                 lane=lane,
                 size=size,
-                timeScaleGroup=0,
+                timeScaleGroup=point.til,
                 trace=trace,
                 direction=direction,
             )
         )
+    if fever_start and not fever_end:
+        raise AttributeError("Must have a fever end if a fever start is defined.")
+    if fever_end and not fever_start:
+        raise AttributeError("Must have a fever start if a fever end is defined.")
     notes.sort(key=lambda x: x.get_sus_sort_number())
 
     metadata = MetaData(

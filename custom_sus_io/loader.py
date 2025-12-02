@@ -130,30 +130,45 @@ def process_score(lines: list[tuple[str]], metadata: list[tuple[str]]) -> Score:
 
     bpm_map = {}
     bpm_change_objects = []
+    til_map = {}
     tils = []  # ハイスピに対応
     tap_notes = []
     directional_notes = []
     slide_streams = defaultdict(list)
     guide_streams = defaultdict(list)  # ガイドに対応
 
+    til_data_index = 0
+    current_til_id: str = None
     for header, data in lines:
         if len(header) == 5 and header.startswith("BPM"):
             bpm_map[header[3:]] = float(data)
+        elif header == "HISPEED":
+            current_til_id = til_map.get(data)
+            if not current_til_id:
+                raise KeyError(
+                    f"HISPEED {data} is not valid ({', '.join(til_map.keys())})"
+                )
         elif len(header) == 5 and header.endswith("08"):
             bpm_change_objects += to_raw_objects(header, data, to_tick)
         elif len(header) == 5 and header[3] == "1":
-            tap_notes += to_note_objects(header, data, to_tick)
+            tap_notes += to_note_objects(header, data, current_til_id, to_tick)
         elif len(header) == 6 and header[3] == "3":
             channel = header[5]
-            slide_streams[channel] += to_note_objects(header, data, to_tick)
+            slide_streams[channel] += to_note_objects(
+                header, data, current_til_id, to_tick
+            )
         elif len(header) == 5 and header[3] == "5":
-            directional_notes += to_note_objects(header, data, to_tick)
+            directional_notes += to_note_objects(header, data, current_til_id, to_tick)
         # ガイドに対応
         elif len(header) == 6 and header[3] == "9":
             channel = header[5]
-            guide_streams[channel] += to_note_objects(header, data, to_tick)
+            guide_streams[channel] += to_note_objects(
+                header, data, current_til_id, to_tick
+            )
         # ハイスピに対応(仮)
         elif len(header) == 5 and header.startswith("TIL"):
+            til_map[header[3:]] = til_data_index
+            new_til = []
             for til in data[1:-1].replace(" ", "").split(","):
                 til = re.search(r"(\d+)'(\d+):(.?\d+(\.?\d+)?)", til)
                 if til:
@@ -162,7 +177,9 @@ def process_score(lines: list[tuple[str]], metadata: list[tuple[str]]) -> Score:
                         int(til.group(2)),
                         float(til.group(3)),
                     )
-                    tils.append((fix_til_tick(measure, tick), value))
+                    new_til.append((fix_til_tick(measure, tick), value))
+            tils.append(new_til)
+            til_data_index += 1
 
     slide_notes = []
     for stream in slide_streams.values():
@@ -206,7 +223,7 @@ def to_slides(stream: list[Note]) -> list[list[Note]]:
 
 
 def to_note_objects(
-    header: int, data: str, to_tick: Callable[[int, int, int], int]
+    header: int, data: str, current_til_id: int, to_tick: Callable[[int, int, int], int]
 ) -> list[Note]:
     return [
         Note(
@@ -214,6 +231,7 @@ def to_note_objects(
             lane=int(header[4], 36),
             width=int(value[1], 36),
             type=int(value[0], 36),
+            til=current_til_id,
         )
         for tick, value in to_raw_objects(header, data, to_tick)
     ]

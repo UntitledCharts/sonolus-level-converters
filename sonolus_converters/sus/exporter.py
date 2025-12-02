@@ -33,8 +33,15 @@ def usc_notesize_to_sus_notesize(size: float) -> int:
     return int(math.ceil(size * 2))
 
 
+def convert_tils(tils: dict[int, tuple]) -> list[tuple]:
+    return [value for _, value in sorted(tils.items())]
+
+
 def export(
-    path: Union[str, Path, io.BytesIO, io.StringIO, io.TextIOBase], score: Score
+    path: Union[str, Path, io.BytesIO, io.StringIO, io.TextIOBase],
+    score: Score,
+    allow_layers: bool = False,
+    allow_extended_lanes: bool = False,
 ):
     """
     Automatically replaces extended eases and guide colors, deleting fake and damage notes.
@@ -43,11 +50,19 @@ def export(
 
     If you want to define your custom color map for replacing, run the .replace_extended_guide_colors with your own map.
     """
+
+    def check_tsg(data_obj) -> None:
+        if data_obj.timeScaleGroup != 0 and not allow_layers:
+            raise ValueError(
+                "Layers found (timeScaleGroup) where allow_layers is false (exporting sus)"
+            )
+
     score.replace_extended_ease()
     score.replace_extended_guide_colors()
     score.delete_fake_notes()
     score.delete_damage_notes()
-    score.strip_extended_lanes()
+    if not allow_extended_lanes:
+        score.strip_extended_lanes()
     metadata = score.metadata
     notes = score.notes
     taps = []
@@ -55,8 +70,9 @@ def export(
     slides = []
     guides = []
     bpms = []
-    tils = []
+    tils = {}
 
+    til_index = 0
     for note in notes:
         if isinstance(note, Bpm):
             tick = beat_to_tick(note.beat)
@@ -64,15 +80,23 @@ def export(
 
         elif isinstance(note, TimeScaleGroup):
             note = cast(TimeScaleGroup, note)
+            til = []
+            if til_index != 0 and not allow_layers:
+                raise ValueError(
+                    "Layers found (timeScaleGroup) where allow_layers is false (exporting sus)"
+                )
             for changepoint in note.changes:
                 changepoint = cast(TimeScalePoint, changepoint)
                 tick = beat_to_tick(changepoint.beat)
-                tils.append((tick, changepoint.timeScale))
+                til.append((tick, changepoint.timeScale))
+            tils[til_index] = til
+            til_index += 1
 
         elif isinstance(note, Single):
             lane = usc_lanes_to_sus_lanes(note.lane, note.size)
             width = usc_notesize_to_sus_notesize(note.size)
             tick = beat_to_tick(note.beat)
+            check_tsg(note)
             if note.trace:  # トレース or 金トレース
                 if note.critical:
                     taps.append(
@@ -81,6 +105,7 @@ def export(
                             lane=lane,
                             width=width,
                             type=SusNoteType.Tap.C_TRACE,
+                            til=note.timeScaleGroup,
                         )
                     )
                 else:
@@ -90,6 +115,7 @@ def export(
                             lane=lane,
                             width=width,
                             type=SusNoteType.Tap.TRACE,
+                            til=note.timeScaleGroup,
                         )
                     )
             else:  # タップ or 金タップ
@@ -100,19 +126,28 @@ def export(
                             lane=lane,
                             width=width,
                             type=SusNoteType.Tap.C_TAP,
+                            til=note.timeScaleGroup,
                         )
                     )
                 else:
                     taps.append(
                         csus.Note(
-                            tick=tick, lane=lane, width=width, type=SusNoteType.Tap.TAP
+                            tick=tick,
+                            lane=lane,
+                            width=width,
+                            type=SusNoteType.Tap.TAP,
+                            til=note.timeScaleGroup,
                         )
                     )
             if note.direction:  # フリック付
                 if note.direction == "up":
                     directionals.append(
                         csus.Note(
-                            tick=tick, lane=lane, width=width, type=SusNoteType.Air.UP
+                            tick=tick,
+                            lane=lane,
+                            width=width,
+                            type=SusNoteType.Air.UP,
+                            til=note.timeScaleGroup,
                         )
                     )
                 elif note.direction == "left":
@@ -122,6 +157,7 @@ def export(
                             lane=lane,
                             width=width,
                             type=SusNoteType.Air.LEFT_UP,
+                            til=note.timeScaleGroup,
                         )
                     )
                 elif note.direction == "right":
@@ -131,6 +167,7 @@ def export(
                             lane=lane,
                             width=width,
                             type=SusNoteType.Air.RIGHT_UP,
+                            til=note.timeScaleGroup,
                         )
                     )
 
@@ -140,6 +177,7 @@ def export(
                 tick = beat_to_tick(step.beat)
                 lane = usc_lanes_to_sus_lanes(step.lane, step.size)
                 width = usc_notesize_to_sus_notesize(step.size)
+                check_tsg(step)
                 # 始点
                 if step.type == "start":
                     step = cast(SlideStartPoint, step)
@@ -150,6 +188,7 @@ def export(
                                 lane=lane,
                                 width=width,
                                 type=SusNoteType.Air.DOWN,
+                                til=step.timeScaleGroup,
                             )
                         )
                     elif step.ease == "out":  # 減速
@@ -159,6 +198,7 @@ def export(
                                 lane=lane,
                                 width=width,
                                 type=SusNoteType.Air.RIGHT_DOWN,
+                                til=step.timeScaleGroup,
                             )
                         )
                     elif step.ease == "linear":  # 直線
@@ -171,6 +211,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Tap.C_ELASER,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                         else:
@@ -180,6 +221,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Tap.ELASER,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                     elif step.judgeType == "trace":  # 始点トレース
@@ -190,6 +232,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Tap.C_TRACE,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                         else:
@@ -199,6 +242,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Tap.TRACE,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                     elif step.judgeType == "normal":
@@ -209,6 +253,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Tap.C_TAP,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                     slide.append(
@@ -217,6 +262,7 @@ def export(
                             lane=lane,
                             width=width,
                             type=SusNoteType.Slide.START,
+                            til=step.timeScaleGroup,
                         )
                     )
 
@@ -230,6 +276,7 @@ def export(
                                 lane=lane,
                                 width=width,
                                 type=SusNoteType.Tap.TAP,
+                                til=step.timeScaleGroup,
                             )
                         )
                         directionals.append(
@@ -238,6 +285,7 @@ def export(
                                 lane=lane,
                                 width=width,
                                 type=SusNoteType.Air.DOWN,
+                                til=step.timeScaleGroup,
                             )
                         )
                     elif step.ease == "out":  # 減速
@@ -247,6 +295,7 @@ def export(
                                 lane=lane,
                                 width=width,
                                 type=SusNoteType.Tap.TAP,
+                                til=step.timeScaleGroup,
                             )
                         )
                         directionals.append(
@@ -255,6 +304,7 @@ def export(
                                 lane=lane,
                                 width=width,
                                 type=SusNoteType.Air.RIGHT_DOWN,
+                                til=step.timeScaleGroup,
                             )
                         )
                     elif step.ease == "linear":  # 直線
@@ -267,6 +317,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Slide.STEP,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                         else:  # 可視中継点
@@ -276,6 +327,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Slide.VISIBLE_STEP,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                     elif step.type == "attach":  # 無視中継点
@@ -285,6 +337,7 @@ def export(
                                 lane=lane,
                                 width=width,
                                 type=SusNoteType.Tap.FLICK,
+                                til=step.timeScaleGroup,
                             )
                         )
                         slide.append(
@@ -293,6 +346,7 @@ def export(
                                 lane=lane,
                                 width=width,
                                 type=SusNoteType.Slide.VISIBLE_STEP,
+                                til=step.timeScaleGroup,
                             )
                         )
 
@@ -307,6 +361,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Tap.C_ELASER,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                         else:
@@ -316,6 +371,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Tap.ELASER,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                     elif step.judgeType == "trace":  # 終点トレース
@@ -326,6 +382,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Tap.C_TRACE,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                         else:
@@ -335,6 +392,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Tap.TRACE,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                     elif step.judgeType == "normal":
@@ -346,6 +404,7 @@ def export(
                                         lane=lane,
                                         width=width,
                                         type=SusNoteType.Tap.C_TAP,
+                                        til=step.timeScaleGroup,
                                     )
                                 )
                     if step.direction:  # フリック付
@@ -356,6 +415,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Air.UP,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                         elif step.direction == "left":
@@ -365,6 +425,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Air.LEFT_UP,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                         elif step.direction == "right":
@@ -374,6 +435,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Air.RIGHT_UP,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                     slide.append(
@@ -382,6 +444,7 @@ def export(
                             lane=lane,
                             width=width,
                             type=SusNoteType.Slide.END,
+                            til=step.timeScaleGroup,
                         )
                     )
             slides.append(slide)
@@ -394,6 +457,7 @@ def export(
                 tick = beat_to_tick(step.beat)
                 lane = usc_lanes_to_sus_lanes(step.lane, step.size)
                 width = usc_notesize_to_sus_notesize(step.size)
+                check_tsg(step)
                 # 始点
                 if idx == 0:
                     if note.color == "yellow":
@@ -403,6 +467,7 @@ def export(
                                 lane=lane,
                                 width=width,
                                 type=SusNoteType.Tap.C_ELASER,
+                                til=step.timeScaleGroup,
                             )
                         )
                     elif note.color == "green":
@@ -412,6 +477,7 @@ def export(
                                 lane=lane,
                                 width=width,
                                 type=SusNoteType.Tap.ELASER,
+                                til=step.timeScaleGroup,
                             )
                         )
 
@@ -422,6 +488,7 @@ def export(
                                 lane=lane,
                                 width=width,
                                 type=SusNoteType.Air.DOWN,
+                                til=step.timeScaleGroup,
                             )
                         )
                     elif step.ease == "out":  # 減速
@@ -431,6 +498,7 @@ def export(
                                 lane=lane,
                                 width=width,
                                 type=SusNoteType.Air.RIGHT_DOWN,
+                                til=step.timeScaleGroup,
                             )
                         )
                     elif step.ease == "linear":  # 直線
@@ -441,6 +509,7 @@ def export(
                             lane=lane,
                             width=width,
                             type=SusNoteType.Guide.START,
+                            til=step.timeScaleGroup,
                         )
                     )
 
@@ -453,6 +522,7 @@ def export(
                                 lane=lane,
                                 width=width,
                                 type=SusNoteType.Tap.C_ELASER,
+                                til=step.timeScaleGroup,
                             )
                         )
                     elif note.color == "green":
@@ -463,6 +533,7 @@ def export(
                             lane=lane,
                             width=width,
                             type=SusNoteType.Guide.END,
+                            til=step.timeScaleGroup,
                         )
                     )
 
@@ -476,6 +547,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Tap.C_ELASER,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                         elif note.color == "green":
@@ -485,6 +557,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Tap.ELASER,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                         directionals.append(
@@ -493,6 +566,7 @@ def export(
                                 lane=lane,
                                 width=width,
                                 type=SusNoteType.Air.DOWN,
+                                til=step.timeScaleGroup,
                             )
                         )
                     elif step.ease == "out":  # 減速
@@ -503,6 +577,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Tap.C_ELASER,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                         elif note.color == "green":
@@ -512,6 +587,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Tap.ELASER,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                         directionals.append(
@@ -520,6 +596,7 @@ def export(
                                 lane=lane,
                                 width=width,
                                 type=SusNoteType.Air.RIGHT_DOWN,
+                                til=step.timeScaleGroup,
                             )
                         )
                     elif step.ease == "linear":  # 直線
@@ -530,6 +607,7 @@ def export(
                                     lane=lane,
                                     width=width,
                                     type=SusNoteType.Tap.C_ELASER,
+                                    til=step.timeScaleGroup,
                                 )
                             )
                         elif note.color == "green":
@@ -540,6 +618,7 @@ def export(
                             lane=lane,
                             width=width,
                             type=SusNoteType.Guide.STEP,
+                            til=step.timeScaleGroup,
                         )
                     )
             guides.append(guide)
@@ -566,10 +645,9 @@ def export(
             guides=guides,
             bpms=bpms,
             bar_lengths=[(0, 4.0)],
-            tils=tils,
+            tils=convert_tils(tils),
         ),
         comment=f"This file was generated by sonolus-level-converters {__version__}",
-        space=False,
     )
 
     if isinstance(path, (str, Path)):

@@ -8,7 +8,7 @@ class GuidePoint:
     ease: Literal["outin", "out", "linear", "in", "inout"]
     lane: float
     size: float
-    timeScaleGroup: float
+    timeScaleGroup: int
 
 
 @dataclass
@@ -83,7 +83,7 @@ def validate_guide_dict_values(data: dict) -> tuple | None:
                     f"Item {idx} in 'midpoints' is missing or has an invalid 'size'",
                 )
             if "timeScaleGroup" not in item or not isinstance(
-                item["timeScaleGroup"], (int, float)
+                item["timeScaleGroup"], int
             ):
                 return (
                     item,

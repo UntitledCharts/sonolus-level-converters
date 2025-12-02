@@ -10,7 +10,7 @@ class SlideStartPoint:
     judgeType: Literal["normal", "trace", "none"]
     lane: float
     size: float
-    timeScaleGroup: float
+    timeScaleGroup: int
     type: str = "start"
 
 
@@ -20,7 +20,7 @@ class SlideRelayPoint:
     ease: Literal["outin", "out", "linear", "in", "inout"]
     lane: float
     size: float
-    timeScaleGroup: float
+    timeScaleGroup: int
     type: Literal["tick", "attach"]
     critical: bool | None = None
 
@@ -32,7 +32,7 @@ class SlideEndPoint:
     judgeType: Literal["normal", "trace", "none"]
     lane: float
     size: float
-    timeScaleGroup: float
+    timeScaleGroup: int
     direction: Literal["left", "up", "right"] | None = None
     type: str = "end"
 
@@ -105,7 +105,7 @@ def validate_slide_dict_values(data: dict) -> tuple | None:
                     f"Item {idx} in 'connections' is missing or has an invalid 'size'",
                 )
             if "timeScaleGroup" not in item or not isinstance(
-                item["timeScaleGroup"], (int, float)
+                item["timeScaleGroup"], int
             ):
                 return (
                     item,
