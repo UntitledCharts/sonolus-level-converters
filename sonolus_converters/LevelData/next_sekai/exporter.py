@@ -14,6 +14,9 @@ from ...notes import (
     TimeScaleGroup,
     TimeScalePoint,
     Single,
+    Skill,
+    FeverChance,
+    FeverStart,
     Slide,
     Guide,
     SlideStartPoint,
@@ -96,6 +99,7 @@ def export(
     bpm_changes: list[Bpm] = []
     timescale_groups: list[TimeScaleGroup] = []
     single_notes: list[Single] = []
+    events: list[Skill, FeverChance, FeverStart] = []
     slide_notes: list[Slide] = []
     guide_notes: list[Guide] = []
 
@@ -114,6 +118,12 @@ def export(
                 slide_notes.append(entry)
             case Guide():
                 guide_notes.append(entry)
+            case Skill():
+                events.append(entry)
+            case FeverChance():
+                events.append(entry)
+            case FeverStart():
+                events.append(entry)
             case _:
                 assert_never(entry)
 
@@ -154,6 +164,21 @@ def export(
                 last_entity["next"] = new_entity
             last_entity = new_entity
             entities.append(new_entity)
+
+    for event in events:
+        event_archetypes = {
+            "skill": "Skill",
+            "feverStart": "FeverStart",
+            "feverChance": "FeverChance",
+        }
+        name = event_archetypes[event]
+        entity = Entity(
+            name,
+            {
+                "#BEAT": event.beat,
+            },
+        )
+        entities.append(entity)
 
     for note in single_notes:
         name_parts = []
