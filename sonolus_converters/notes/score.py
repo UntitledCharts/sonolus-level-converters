@@ -411,6 +411,7 @@ class Score:
                 or isinstance(note, TimeScaleGroup)
                 or isinstance(note, (Skill, FeverStart, FeverChance))
             ):
+                notes.append(note)
                 continue
             if isinstance(note, Single):
                 # note.lane 0 (+1/-1 for each lane, based on middle of note, starting at center lane)
