@@ -2,7 +2,7 @@ import math
 
 from pathlib import Path
 import io
-from typing import Dict, List, Union, Optional, Callable, Literal, IO
+from typing import Union
 
 import custom_sus_io as csus
 from typing import cast
@@ -10,7 +10,7 @@ from ..version import __version__
 from ..notes.score import Score
 from ..notes.bpm import Bpm
 from ..notes.timescale import TimeScaleGroup, TimeScalePoint
-from ..notes.single import Single
+from ..notes.single import Single, Skill, FeverStart, FeverEnd
 from ..notes.slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
 from ..notes.guide import Guide, GuidePoint
 from .notetype import SusNoteType
@@ -92,6 +92,25 @@ def export(
             tils[til_index] = til
             til_index += 1
 
+        elif isinstance(note, (Skill, FeverStart, FeverEnd)):
+            event_lane = {"skill": 0, "fever1": 15, "fever2": 15}
+            event_tap_type = {
+                "skill": SusNoteType.Tap.SKILL,
+                "fever1": SusNoteType.Tap.TAP,
+                "fever2": SusNoteType.Tap.C_TAP,
+            }
+            lane = usc_lanes_to_sus_lanes(event_lane[note.type], 1)
+            width = usc_notesize_to_sus_notesize(1)
+            tick = beat_to_tick(note.beat)
+            taps.append(
+                csus.Note(
+                    tick=tick,
+                    lane=lane,
+                    width=width,
+                    type=event_tap_type[note.type],
+                    til=0,
+                )
+            )
         elif isinstance(note, Single):
             lane = usc_lanes_to_sus_lanes(note.lane, note.size)
             width = usc_notesize_to_sus_notesize(note.size)

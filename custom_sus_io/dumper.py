@@ -200,7 +200,7 @@ def dumps(
             + f"{', '.join(til_list)}"
             + '"'
         )
-    # default hispeed at start remains 00
+    # default hispeed at start
     lines.append("#HISPEED 00")
     lines.append("#MEASUREHS 00")
     lines.append("")
