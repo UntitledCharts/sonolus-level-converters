@@ -1,0 +1,130 @@
+{
+    "bgmOffset": -0.9665449857711792,
+    "entities": [
+        {
+            "name": "2143707004688",
+            "archetype": "Initialization",
+            "data": []
+        },
+        {
+            "name": "2143723600384",
+            "archetype": "#BPM_CHANGE",
+            "data": [
+                {
+                    "name": "#BEAT",
+                    "value": 0.0
+                },
+                {
+                    "name": "#BPM",
+                    "value": 220.0
+                }
+            ]
+        },
+        {
+            "name": "2143723599952",
+            "archetype": "#TIMESCALE_GROUP",
+            "data": [
+                {
+                    "name": "first",
+                    "ref": "2143723600672"
+                }
+            ]
+        },
+        {
+            "name": "2143723600672",
+            "archetype": "#TIMESCALE_CHANGE",
+            "data": [
+                {
+                    "name": "#BEAT",
+                    "value": 0.0
+                },
+                {
+                    "name": "#TIMESCALE",
+                    "value": 1.0
+                },
+                {
+                    "name": "#TIMESCALE_SKIP",
+                    "value": 0
+                },
+                {
+                    "name": "#TIMESCALE_GROUP",
+                    "ref": "2143723599952"
+                },
+                {
+                    "name": "#TIMESCALE_EASE",
+                    "value": 0
+                }
+            ]
+        },
+        {
+            "name": "2143723600576",
+            "archetype": "Skill",
+            "data": [
+                {
+                    "name": "#BEAT",
+                    "value": 68.0
+                }
+            ]
+        },
+        {
+            "name": "2143723600720",
+            "archetype": "Skill",
+            "data": [
+                {
+                    "name": "#BEAT",
+                    "value": 148.0
+                }
+            ]
+        },
+        {
+            "name": "2143723601680",
+            "archetype": "Skill",
+            "data": [
+                {
+                    "name": "#BEAT",
+                    "value": 340.0
+                }
+            ]
+        },
+        {
+            "name": "2143723601776",
+            "archetype": "Skill",
+            "data": [
+                {
+                    "name": "#BEAT",
+                    "value": 404.0
+                }
+            ]
+        },
+        {
+            "name": "2143723601872",
+            "archetype": "FeverChance",
+            "data": [
+                {
+                    "name": "#BEAT",
+                    "value": 436.0
+                }
+            ]
+        },
+        {
+            "name": "2143723592272",
+            "archetype": "FeverStart",
+            "data": [
+                {
+                    "name": "#BEAT",
+                    "value": 508.0
+                }
+            ]
+        },
+        {
+            "name": "2143723592176",
+            "archetype": "Skill",
+            "data": [
+                {
+                    "name": "#BEAT",
+                    "value": 636.0
+                }
+            ]
+        }
+    ]
+}
