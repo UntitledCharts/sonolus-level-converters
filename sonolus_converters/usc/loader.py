@@ -4,7 +4,7 @@ from ..notes.score import Score
 from ..notes.metadata import MetaData
 from ..notes.bpm import Bpm
 from ..notes.timescale import TimeScaleGroup, TimeScalePoint
-from ..notes.single import Single
+from ..notes.single import Single, FeverChance, FeverStart, Skill
 from ..notes.slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
 from ..notes.guide import Guide, GuidePoint
 
@@ -23,8 +23,14 @@ def load(fp: TextIO) -> Score:
     has_bpm = False
     for obj in usc["usc"]["objects"]:
         type = obj["type"]
-
-        if type == "bpm":
+        if type in ["feverChance", "feverStart", "skill"]:
+            event_dataclass = {
+                "skill": Skill,
+                "feverChance": FeverChance,
+                "feverStart": FeverStart,
+            }
+            notelist.append(event_dataclass[type](beat=round(obj["beat"], 6)))
+        elif type == "bpm":
             notelist.append(Bpm(beat=round(obj["beat"], 6), bpm=obj["bpm"]))
             has_bpm = True
 

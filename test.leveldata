@@ -2,12 +2,12 @@
     "bgmOffset": -0.9665449857711792,
     "entities": [
         {
-            "name": "2143707004688",
+            "name": "3106591014672",
             "archetype": "Initialization",
             "data": []
         },
         {
-            "name": "2143723600384",
+            "name": "3106608076864",
             "archetype": "#BPM_CHANGE",
             "data": [
                 {
@@ -21,17 +21,17 @@
             ]
         },
         {
-            "name": "2143723599952",
+            "name": "3106608076432",
             "archetype": "#TIMESCALE_GROUP",
             "data": [
                 {
                     "name": "first",
-                    "ref": "2143723600672"
+                    "ref": "3106608077152"
                 }
             ]
         },
         {
-            "name": "2143723600672",
+            "name": "3106608077152",
             "archetype": "#TIMESCALE_CHANGE",
             "data": [
                 {
@@ -48,7 +48,7 @@
                 },
                 {
                     "name": "#TIMESCALE_GROUP",
-                    "ref": "2143723599952"
+                    "ref": "3106608076432"
                 },
                 {
                     "name": "#TIMESCALE_EASE",
@@ -57,7 +57,7 @@
             ]
         },
         {
-            "name": "2143723600576",
+            "name": "3106608077056",
             "archetype": "Skill",
             "data": [
                 {
@@ -67,7 +67,7 @@
             ]
         },
         {
-            "name": "2143723600720",
+            "name": "3106608077200",
             "archetype": "Skill",
             "data": [
                 {
@@ -77,7 +77,7 @@
             ]
         },
         {
-            "name": "2143723601680",
+            "name": "3106608078160",
             "archetype": "Skill",
             "data": [
                 {
@@ -87,7 +87,7 @@
             ]
         },
         {
-            "name": "2143723601776",
+            "name": "3106608078256",
             "archetype": "Skill",
             "data": [
                 {
@@ -97,7 +97,7 @@
             ]
         },
         {
-            "name": "2143723601872",
+            "name": "3106608078352",
             "archetype": "FeverChance",
             "data": [
                 {
@@ -107,7 +107,7 @@
             ]
         },
         {
-            "name": "2143723592272",
+            "name": "3106608078448",
             "archetype": "FeverStart",
             "data": [
                 {
@@ -117,7 +117,7 @@
             ]
         },
         {
-            "name": "2143723592176",
+            "name": "3106608078544",
             "archetype": "Skill",
             "data": [
                 {
