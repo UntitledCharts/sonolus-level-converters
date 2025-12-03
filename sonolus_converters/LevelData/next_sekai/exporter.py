@@ -171,7 +171,7 @@ def export(
             "feverStart": "FeverStart",
             "feverChance": "FeverChance",
         }
-        name = event_archetypes[event]
+        name = event_archetypes[event.type]
         entity = Entity(
             name,
             {

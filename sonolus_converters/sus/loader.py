@@ -112,7 +112,7 @@ def load(fp: TextIO) -> Score:
             if change[0] == 0:
                 exist_initial_time_scale = True
             time_scale_group.append(
-                TimeScalePoint(beat=_tick_to_beat(til[0]), timeScale=til[1])
+                TimeScalePoint(beat=_tick_to_beat(change[0]), timeScale=change[1])
             )
     if not exist_initial_time_scale:
         time_scale_group.insert(0, TimeScalePoint(beat=0.0, timeScale=1.0))
