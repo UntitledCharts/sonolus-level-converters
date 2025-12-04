@@ -144,7 +144,9 @@ def process_score(lines: list[tuple[str]], metadata: list[tuple[str]]) -> Score:
             bpm_map[header[3:]] = float(data)
         elif header == "HISPEED":
             current_til_id = til_map.get(data)
-            if not current_til_id:
+            if (
+                current_til_id == None
+            ):  # can't use `not current_til_id` due to 0 being falsey
                 raise KeyError(
                     f"HISPEED {data} is not valid ({', '.join(til_map.keys())})"
                 )
@@ -225,6 +227,7 @@ def to_slides(stream: list[Note]) -> list[list[Note]]:
 def to_note_objects(
     header: int, data: str, current_til_id: int, to_tick: Callable[[int, int, int], int]
 ) -> list[Note]:
+    assert current_til_id != None
     return [
         Note(
             tick=tick,
@@ -267,8 +270,13 @@ def loads(data: str) -> Score:
             continue
         line = line.strip()
         match = re.match(r"^#(\w+):\s*(.*)$", line)
+        match2 = re.match(
+            r"^#(HISPEED|MEASUREHS)\s+(.*)$", line
+        )  # handle special scoredata `#HISPEED zz` or `#MEASUREHS zz`
         if match:
             scoredata.append(match.groups())
+        elif match2:
+            scoredata.append(match2.groups())
         else:
             metadata.append(tuple(line.split(" ", 1)))
 

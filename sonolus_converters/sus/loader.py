@@ -250,7 +250,7 @@ def load(fp: TextIO) -> Score:
                     raise AttributeError("Fever end must be after fever start.")
             continue  # don't load them
         samepos_direction = _search_samepos_note(
-            (note.tick, note.lane), sus_score.directionals, remove=True
+            (note.tick, note.lane, note.til), sus_score.directionals, remove=True
         )
         beat = _tick_to_beat(note.tick)
         critical = _search_is_critical(note.type)
