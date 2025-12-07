@@ -227,7 +227,9 @@ def to_slides(stream: list[Note]) -> list[list[Note]]:
 def to_note_objects(
     header: int, data: str, current_til_id: int, to_tick: Callable[[int, int, int], int]
 ) -> list[Note]:
-    assert current_til_id != None
+    assert (
+        current_til_id != None
+    ), "Place notes (and fever/skills) after the HISPEED line"
     return [
         Note(
             tick=tick,

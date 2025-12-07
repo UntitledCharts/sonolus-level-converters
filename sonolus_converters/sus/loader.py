@@ -239,6 +239,9 @@ def load(fp: TextIO) -> Score:
                     raise AttributeError("Can only have 1 fever chance per chart.")
                 notes.append(FeverChance(beat=_tick_to_beat(note.tick)))
                 fever_chance = _tick_to_beat(note.tick)
+                if fever_start:
+                    if fever_start < fever_chance:
+                        raise AttributeError("Fever end must be after fever start.")
             else:
                 if fever_start:
                     raise AttributeError(
@@ -246,8 +249,9 @@ def load(fp: TextIO) -> Score:
                     )
                 notes.append(FeverStart(beat=_tick_to_beat(note.tick)))
                 fever_start = _tick_to_beat(note.tick)
-                if fever_start < fever_chance:
-                    raise AttributeError("Fever end must be after fever start.")
+                if fever_chance:
+                    if fever_start < fever_chance:
+                        raise AttributeError("Fever end must be after fever start.")
             continue  # don't load them
         samepos_direction = _search_samepos_note(
             (note.tick, note.lane, note.til), sus_score.directionals, remove=True
@@ -265,7 +269,7 @@ def load(fp: TextIO) -> Score:
                 critical=critical,
                 lane=lane,
                 size=size,
-                timeScaleGroup=point.til,
+                timeScaleGroup=note.til,
                 trace=trace,
                 direction=direction,
             )
