@@ -6,11 +6,18 @@ import io
 import re
 
 
-def detect(
-    data: Union[os.PathLike, IO[bytes], bytes, str]
-) -> Tuple[bool, bool, bool, bool, bool, Literal["base", "chcy", "us", "nextsekai"]]:
+def detect(data: Union[os.PathLike, IO[bytes], bytes, str]) -> Tuple[
+    bool,
+    bool,
+    bool,
+    bool,
+    bool,
+    bool,
+    Literal["base", "chcy", "us", "uc"],
+    Literal["base", "chcy", "us", "nextsekai"],
+]:
     """
-    valid, is_sus, is_usc, is_leveldata, is_compressed, leveldata_type
+    valid, is_sus, is_usc, is_mmw, is_leveldata, mmw_type, is_compressed (leveldata), leveldata_type
     """
     if isinstance(data, os.PathLike) or type(data) == str:
         with open(data, "rb") as f:
@@ -19,14 +26,18 @@ def detect(
         data = data.read()
 
     leveldata = None
+    mmw = None
     sus = None
     usc = None
     compressed = False
+
+    mmw_type = None
 
     # haha gzip
     if data[:2] == b"\x1f\x8b":
         sus = False
         usc = False
+        mmw = False
         try:
             with gzip.GzipFile(fileobj=io.BytesIO(data), mode="rb", mtime=0) as gz:
                 leveldata = True
@@ -38,6 +49,7 @@ def detect(
         try:
             level_data = json.loads(data.decode("utf-8"))
             sus = False
+            mmw = False
             if len(level_data.keys()) == 2:
                 if "usc" in level_data:
                     leveldata = False
@@ -51,25 +63,33 @@ def detect(
         except (UnicodeDecodeError, json.JSONDecodeError):
             usc = False
             leveldata = False
-            try:
-                metadata = []
-                scoredata = []
-                for line in data.decode().splitlines():
-                    if not line.startswith("#"):
-                        continue
-                    line = line.strip()
-                    match = re.match(r"^#(\w+):\s*(.*)$", line)
-                    if match:
-                        scoredata.append(match.groups())
-                    else:
-                        metadata.append(tuple(line.split(" ", 1)))
-
-                if metadata and scoredata:
-                    sus = True
-                else:
-                    sus = False
-            except UnicodeDecodeError:
+            # TODO: check mmw here first
+            mmw = False
+            if False:  # somehow check mmw
+                mmw = True
                 sus = False
+                mmw_type = Literal["base", "chcy", "us", "uc"]  # somehow check this
+            else:  # it's not mmw, continue checks
+                mmw = False
+                try:
+                    metadata = []
+                    scoredata = []
+                    for line in data.decode().splitlines():
+                        if not line.startswith("#"):
+                            continue
+                        line = line.strip()
+                        match = re.match(r"^#(\w+):\s*(.*)$", line)
+                        if match:
+                            scoredata.append(match.groups())
+                        else:
+                            metadata.append(tuple(line.split(" ", 1)))
+
+                    if metadata and scoredata:
+                        sus = True
+                    else:
+                        sus = False
+                except UnicodeDecodeError:
+                    sus = False
 
     leveldata_type = None
     if leveldata:
@@ -95,4 +115,13 @@ def detect(
                 leveldata_type = "nextsekai"
         else:
             leveldata_type = "base"
-    return any([sus, usc, leveldata]), sus, usc, leveldata, compressed, leveldata_type
+    return (
+        any([sus, usc, leveldata, mmw]),
+        sus,
+        usc,
+        mmw,
+        leveldata,
+        mmw_type,
+        compressed,
+        leveldata_type,
+    )
