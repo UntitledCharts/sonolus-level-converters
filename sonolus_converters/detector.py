@@ -3,125 +3,59 @@ import os
 import gzip
 import json
 import io
-import re
+from . import sus, mmws, usc, LevelData
 
-
-def detect(data: Union[os.PathLike, IO[bytes], bytes, str]) -> Tuple[
-    bool,
-    bool,
-    bool,
-    bool,
-    bool,
-    bool,
-    Literal["base", "chcy", "us", "uc"],
-    Literal["base", "chcy", "us", "nextsekai"],
+def detect(data: Union[os.PathLike, IO[bytes], bytes, str]) -> Union[
+    Tuple[Literal['sus'], Literal['']],
+    Tuple[Literal['mmw'], Literal['base', 'chcy', 'unch']],
+    Tuple[Literal['usc'], Literal['v1', 'v2']],
+    Tuple[Literal['lvd'], Literal['base', 'chcy', 'pysekai', 'compress_base', 'compress_chcy', 'compress_pysekai']],
+    None
 ]:
+    """Parse the data and determine the format of the score
+
+    :returns: ``(format, specifier)`` if detected, else ``None``.
+    :rtype: tuple[str, str] | None
     """
-    valid, is_sus, is_usc, is_mmw, is_leveldata, mmw_type, is_compressed (leveldata), leveldata_type
-    """
-    if isinstance(data, os.PathLike) or type(data) == str:
+    if isinstance(data, (os.PathLike, str)):
         with open(data, "rb") as f:
             data = f.read()
     elif isinstance(data, IO):
         data = data.read()
+    elif isinstance(data, memoryview):
+        data = data.tobytes()
 
-    leveldata = None
-    mmw = None
-    sus = None
-    usc = None
-    compressed = False
-
-    mmw_type = None
-
-    # haha gzip
-    if data[:2] == b"\x1f\x8b":
-        sus = False
-        usc = False
-        mmw = False
+    # Check for formats with binary data and magic number first
+    # Gzip data
+    GZIP_MAGIC_NUM = b"\x1f\x8b"
+    if data[:2] == GZIP_MAGIC_NUM:
         try:
             with gzip.GzipFile(fileobj=io.BytesIO(data), mode="rb", mtime=0) as gz:
-                leveldata = True
-                level_data = json.load(gz)
-                compressed = True
-        except (gzip.BadGzipFile, json.JSONDecodeError) as e:
-            leveldata = False
-    else:
-        try:
-            level_data = json.loads(data.decode("utf-8"))
-            sus = False
-            mmw = False
-            if len(level_data.keys()) == 2:
-                if "usc" in level_data:
-                    leveldata = False
-                    usc = True
-                elif "entities" in level_data:
-                    usc = False
-                    leveldata = True
-                else:
-                    usc = False
-                    leveldata = False
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            usc = False
-            leveldata = False
-            # TODO: check mmw here first
-            mmw = False
-            if False:  # somehow check mmw
-                mmw = True
-                sus = False
-                mmw_type = Literal["base", "chcy", "us", "uc"]  # somehow check this
-            else:  # it's not mmw, continue checks
-                mmw = False
-                try:
-                    metadata = []
-                    scoredata = []
-                    for line in data.decode().splitlines():
-                        if not line.startswith("#"):
-                            continue
-                        line = line.strip()
-                        match = re.match(r"^#(\w+):\s*(.*)$", line)
-                        if match:
-                            scoredata.append(match.groups())
-                        else:
-                            metadata.append(tuple(line.split(" ", 1)))
-
-                    if metadata and scoredata:
-                        sus = True
-                    else:
-                        sus = False
-                except UnicodeDecodeError:
-                    sus = False
-
-    leveldata_type = None
-    if leveldata:
-        if not any(
-            e.get("archetype") in ["TimeScaleGroup", "#TIMESCALE_GROUP"]
-            for e in level_data["entities"]
-        ):
-            extended = False
-        else:
-            extended = True
-        if extended:
-            leveldata_type = "chcy"
-            ld_str = json.dumps(level_data)
-            if "isdummy" in ld_str:
-                leveldata_type = "us"
-            elif (
-                "TransientHiddenTick" in ld_str
-                or "Fake" in ld_str
-                or "segmentHead" in ld_str
-            ) or any(
-                e.get("archetype") == "#TIMESCALE_GROUP" for e in level_data["entities"]
-            ):  # XXX: make more robust. there's a lot more: some guide colors, down flicks
-                leveldata_type = "nextsekai"
-        else:
-            leveldata_type = "base"
-    return (
-        any([sus, usc, leveldata, mmw]),
-        sus,
-        usc,
-        mmw,
-        leveldata,
-        mmw_type,
-        compressed,
-        leveldata_type,
-    )
+                json_data = json.load(gz)
+                format_spec = LevelData.detect(json_data, skip_gzip=True, skip_json=True)
+                if format_spec is not None:
+                    return ('lvd', 'compress_' + format_spec)
+        except (gzip.BadGzipFile, json.JSONDecodeError):
+            pass
+    # MMW data
+    format_spec = mmws.detect(data)
+    if format_spec:
+        return ('mmw', format_spec)
+    
+    # Binary dection over
+    try: 
+        data = data.decode()
+    except UnicodeDecodeError:
+        return
+    # uncompressed Leveldata
+    format_spec = LevelData.detect(data, skip_gzip=True)
+    if format_spec:
+        return ('lvd', format_spec)
+    # usc
+    format_spec = usc.detect(data)
+    if format_spec:
+        return ('usc', format_spec)
+    # sus
+    format_spec = sus.detect(data)
+    if format_spec is not None:
+        return ('sus', format_spec)

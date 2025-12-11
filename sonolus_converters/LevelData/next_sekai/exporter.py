@@ -99,7 +99,7 @@ def export(
     bpm_changes: list[Bpm] = []
     timescale_groups: list[TimeScaleGroup] = []
     single_notes: list[Single] = []
-    events: list[Skill, FeverChance, FeverStart] = []
+    events: list[Skill | FeverChance | FeverStart] = []
     slide_notes: list[Slide] = []
     guide_notes: list[Guide] = []
 
@@ -320,7 +320,7 @@ def export(
                         getattr(note, "ease", "linear") or "linear"
                     ],
                     "isSeparator": 0,
-                    "segmentKind": 2 if slide.critical else 1,
+                    "segmentKind": (2 if slide.critical else 1) + (50 if slide.fake else 0),
                     "segmentAlpha": 1,
                 },
             )

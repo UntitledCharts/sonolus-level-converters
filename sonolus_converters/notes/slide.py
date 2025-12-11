@@ -23,6 +23,7 @@ class SlideRelayPoint:
     timeScaleGroup: int
     type: Literal["tick", "attach"]
     critical: bool | None = None
+    fake: bool = False
 
 
 @dataclass
