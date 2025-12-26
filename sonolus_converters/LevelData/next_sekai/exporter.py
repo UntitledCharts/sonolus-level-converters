@@ -91,6 +91,8 @@ def export(
     path: Union[str, Path, bytes, io.BytesIO, IO[bytes]],
     score: Score,
     as_compressed: bool = True,
+    smooth_guide_fade: bool = False,
+    use_guide_layer: bool = False,
 ):
     entities: list[Entity] = [
         Entity("Initialization", {}),
@@ -322,6 +324,8 @@ def export(
                     "isSeparator": 0,
                     "segmentKind": 2 if slide.critical else 1,
                     "segmentAlpha": 1,
+                    # Slide Notes: Layer 0
+                    "segmentLayer": 0,
                 },
             )
             entities.append(entity)
@@ -388,7 +392,21 @@ def export(
         prev_note_entity: Entity | None = None
         head_note_entity: Entity | None = None
         connectors = []
+
+        step_size = max(1, len(connections) - 1)
+        step_idx = 0
+
         for note in connections:
+            segment_alpha = 1
+            is_separator = 0
+
+            if smooth_guide_fade:
+                is_separator = 1
+                if guide.fade == "out":
+                    segment_alpha = 1 - 0.8 * (step_idx / step_size)
+                elif guide.fade == "in":
+                    segment_alpha = 1 - 0.8 * ((step_size - step_idx) / step_size)
+
             entity = Entity(
                 "AnchorNote",
                 {
@@ -401,9 +419,10 @@ def export(
                     "direction": 0,
                     "isAttached": 0,
                     "connectorEase": CONNECTOR_EASES[note.ease],
-                    "isSeparator": 0,
+                    "isSeparator": is_separator,
                     "segmentKind": GUIDE_COLORS[guide.color],
-                    "segmentAlpha": 1,
+                    "segmentAlpha": segment_alpha,
+                    "segmentLayer": 1 if use_guide_layer else 0,
                 },
             )
             entities.append(entity)
@@ -421,6 +440,9 @@ def export(
                 connectors.append(connector_entity)
                 prev_note_entity["next"] = entity
             prev_note_entity = entity
+
+            step_idx += 1
+
         assert head_note_entity is not None
         assert prev_note_entity is not None
         for connector_entity in connectors:
@@ -428,15 +450,17 @@ def export(
             connector_entity["segmentTail"] = prev_note_entity
             connector_entity["activeHead"] = head_note_entity
             connector_entity["activeTail"] = prev_note_entity
-        match guide.fade:
-            case "in":
-                head_note_entity["segmentAlpha"] = 0
-            case "out":
-                prev_note_entity["segmentAlpha"] = 0
-            case "none":
-                pass
-            case _:
-                assert_never(guide.fade)
+
+        if not smooth_guide_fade:
+            match guide.fade:
+                case "in":
+                    head_note_entity["segmentAlpha"] = 0
+                case "out":
+                    prev_note_entity["segmentAlpha"] = 0
+                case "none":
+                    pass
+                case _:
+                    assert_never(guide.fade)
 
     groups = []
     last_group = []
