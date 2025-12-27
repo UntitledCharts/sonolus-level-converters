@@ -6,7 +6,9 @@ class MetaData:
     title: str
     artist: str
     designer: str
-    waveoffset: float # Offset in seconds, where negative means late and positive means early
+    waveoffset: (
+        float  # Offset in seconds, where negative means late and positive means early
+    )
     requests: list
 
 

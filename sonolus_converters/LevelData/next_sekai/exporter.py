@@ -322,7 +322,8 @@ def export(
                         getattr(note, "ease", "linear") or "linear"
                     ],
                     "isSeparator": 0,
-                    "segmentKind": (2 if slide.critical else 1) + (50 if slide.fake else 0),
+                    "segmentKind": (2 if slide.critical else 1)
+                    + (50 if slide.fake else 0),
                     "segmentAlpha": 1,
                     # Slide Notes: Layer 0
                     "segmentLayer": 0,

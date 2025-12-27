@@ -1,5 +1,5 @@
-
 import re
+
 
 # TODO: Detect base sus and chcy sus
 def detect(data: str):
@@ -14,4 +14,4 @@ def detect(data: str):
             scoredata.append(match.groups())
         else:
             metadata.append(tuple(line.split(" ", 1)))
-    return '' if metadata and scoredata else None
+    return "" if metadata and scoredata else None
