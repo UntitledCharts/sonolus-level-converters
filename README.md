@@ -1,5 +1,5 @@
 # sonolus-level-converters
-Convert between Sonolus LevelData (as well as MMW4CC's USC and Sekai's SUS)
+Convert between Sonolus LevelData (as well as MMW4CC's USC and Sekai's SUS). Can also be used to easily read chart data.
 
 Requires `Python >= 3.10`
 
@@ -7,9 +7,11 @@ Requires `Python >= 3.10`
 Any file type listed here supports conversions between and from.
 - `.usc`
 - `.sus`
+- `.mmws`
+- `.ccmmws`
+- `.ucmmws`
 
-(hold mids are broken)
-- `chart_cyanvas LevelData` - (returns a identical copy of the original usc, except without time signatures)
+- `chart_cyanvas LevelData` - (returns a identical copy of the original usc, except without time signatures) **hold mids are broken**
 
 # Partial Support
 Any file type listed here will have some support.
@@ -19,6 +21,7 @@ Any file type listed here will have some support.
 
 # Utils/Helpers
 - Strip ChCy Extended Features
+- Skills/Fever conversions
 
 # Known Issues
 - Chart Cyanvas LevelData loading is broken with holds. Converting a Score made from this to sus makes a invalid hold. Converting a Score made from this to usc has extra hold mids.
@@ -49,4 +52,8 @@ Any file type listed here will have some support.
 
 [sonolus-pjsekai-js](https://github.com/hyeon2006/sonolus-pjsekai-js/blob/main/lib/src/usc/revert.ts) for the uscToUsc converter
 
-@YarNix and @hyeon2006 for the help
+@hyeon2006 for the help
+
+@YarNix for the help and MMWS loaders/exporters
+
+@qwewqa for the Next Sekai exporter
