@@ -170,7 +170,7 @@ def read_holds(fbin: BinaryIO, version: Version):
         if version.has_fadeType:
             fade_type = read_int(fbin)
         else:
-            fade_type = 0  # out
+            fade_type = FadeType.OUT.value
         guide_color = (
             read_int(fbin)
             if version.has_guideColor
