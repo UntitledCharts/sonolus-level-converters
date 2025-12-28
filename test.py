@@ -1,7 +1,7 @@
 from sonolus_converters import mmws, sus, usc, LevelData
 
-with open("Master.mmws", "r") as f:
-    score = mmws.load(f)
+with open("master.sus", "r") as f:
+    score = sus.load(f)
 
 overlaps_score, overlap_count = score.export_overlaps_score()
 print(overlap_count)
