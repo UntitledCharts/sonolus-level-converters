@@ -550,15 +550,22 @@ class Score:
         added_used = []
         overlaps_at = []
         for note in tmp_notes:
-            if (note.beat, note.lane) in used.keys():
-                if (note.beat, note.lane) not in added_used:
-                    added_used.append((note.beat, note.lane))
-                    overlaps_at.append(used[(note.beat, note.lane)])
+            if (note.beat, usc_lanes_to_sus_lanes(note.lane, note.size)) in used.keys():
+                if (
+                    note.beat,
+                    usc_lanes_to_sus_lanes(note.lane, note.size),
+                ) not in added_used:
+                    added_used.append(
+                        (note.beat, usc_lanes_to_sus_lanes(note.lane, note.size))
+                    )
+                    overlaps_at.append(
+                        used[(note.beat, usc_lanes_to_sus_lanes(note.lane, note.size))]
+                    )
                 overlaps_at.append(
                     (note.beat, note.lane, note.size, note.timeScaleGroup)
                 )
             else:
-                used[(note.beat, note.lane)] = (
+                used[(note.beat, usc_lanes_to_sus_lanes(note.lane, note.size))] = (
                     note.beat,
                     note.lane,
                     note.size,
