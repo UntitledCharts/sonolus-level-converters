@@ -9,7 +9,7 @@ Any file type listed here supports conversions between and from.
 - `.sus`
 - `.mmws`
 - `.ccmmws`
-- `.ucmmws`
+- `.unchmmws`
 
 - `chart_cyanvas LevelData` - (returns a identical copy of the original usc, except without time signatures) **hold mids are broken**
 

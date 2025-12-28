@@ -169,6 +169,8 @@ def read_holds(fbin: BinaryIO, version: Version):
 
         if version.has_fadeType:
             fade_type = read_int(fbin)
+        else:
+            fade_type = 0  # out
         guide_color = (
             read_int(fbin)
             if version.has_guideColor
@@ -216,13 +218,13 @@ def load(fp: TextIO) -> Score:
     signature = read_cstr(fbin, len(Signature.MikuMikuWorld4UntitledChart.value) + 1)
     version: Version
     match signature:
-        case Signature.MikuMikuWorld:
+        case Signature.MikuMikuWorld.value:
             version = Version(0, 0, read_int(fbin))
-        case Signature.MikuMikuWorld4ChartCyanvas:
+        case Signature.MikuMikuWorld4ChartCyanvas.value:
             version = Version(
                 0, version=read_int(fbin, 16), cc_version=read_int(fbin, 16)
             )
-        case Signature.MikuMikuWorld4UntitledChart:
+        case Signature.MikuMikuWorld4UntitledChart.value:
             version = Version(read_int(fbin))
         case _:
             raise ValueError("Invalid MMWS file. Unrecognized signature")

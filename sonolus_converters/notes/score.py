@@ -20,6 +20,10 @@ from .slide import (
 from .guide import Guide, GuidePoint, validate_guide_dict_values
 
 
+def usc_lanes_to_sus_lanes(lane: float, size: float) -> int:
+    return int(lane - size + 8)
+
+
 # 1tickをbeatに変換
 BEAT_PER_TICK = round(4 / 1920, 6)
 
@@ -517,13 +521,78 @@ class Score:
                     )
         self.notes = notes
 
+    def check_skill_overlap(self) -> bool:
+        skill_timings = []
+        for note in self.notes:
+            if isinstance(note, Skill):
+                if note.beat in skill_timings:
+                    return True
+                skill_timings.append(note.beat)
+        return False
+
+    def export_overlaps_score(self) -> tuple["Score", int]:
+        tmp_notes = []
+
+        useful_notes = []
+        # 一旦、中継点灯を含めた全部のノーツを入れたリストを作る（BPM, ソフランは除外）
+        for note in self.notes:
+            if (
+                isinstance(note, Bpm)
+                or isinstance(note, TimeScaleGroup)
+                or isinstance(note, (Skill, FeverStart, FeverChance))
+            ):
+                useful_notes.append(note)
+                continue
+            tmp_notes.append(note)
+        tmp_notes = _convert_tmp_notes(tmp_notes)
+
+        used = {}
+        added_used = []
+        overlaps_at = []
+        for note in tmp_notes:
+            if (note.beat, note.lane) in used.keys():
+                if (note.beat, note.lane) not in added_used:
+                    added_used.append((note.beat, note.lane))
+                    overlaps_at.append(used[(note.beat, note.lane)])
+                overlaps_at.append(
+                    (note.beat, note.lane, note.size, note.timeScaleGroup)
+                )
+            else:
+                used[(note.beat, note.lane)] = (
+                    note.beat,
+                    note.lane,
+                    note.size,
+                    note.timeScaleGroup,
+                )
+        score = Score(
+            metadata=self.metadata,
+            notes=useful_notes
+            + [
+                Single(
+                    beat=d[0],
+                    critical=True,
+                    lane=d[1],
+                    size=d[2],
+                    timeScaleGroup=d[3],
+                    trace=False,
+                    direction=None,
+                )
+                for d in overlaps_at
+            ],
+        )
+        return score, len(overlaps_at)
+
     # 重なっているノーツをずらす
     def shift(self):
         tmp_notes = []
 
         # 一旦、中継点灯を含めた全部のノーツを入れたリストを作る（BPM, ソフランは除外）
         for note in self.notes:
-            if isinstance(note, Bpm) or isinstance(note, TimeScaleGroup):
+            if (
+                isinstance(note, Bpm)
+                or isinstance(note, TimeScaleGroup)
+                or isinstance(note, (Skill, FeverStart, FeverChance))
+            ):
                 continue
             tmp_notes.append(note)
         tmp_notes = _convert_tmp_notes(tmp_notes)
