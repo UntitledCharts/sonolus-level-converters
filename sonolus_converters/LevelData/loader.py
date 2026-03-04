@@ -48,9 +48,18 @@ def load(
     raw = _read_source(data)
     resolved_type = level_data_type or detect(raw)
     if resolved_type is None:
+        # NOTE: When given non-gzipped bytes, detect() currently returns None
+        # without attempting JSON parsing. As a fallback, we explicitly decode
+        # to text and call detect() again with skip_gzip=True so that JSON
+        # detection is attempted. This relies on the current behavior of
+        # detect() for non-gzipped byte input; if detect() is changed to
+        # handle non-gzipped bytes differently, this fallback should be
+        # revisited.
         try:
             resolved_type = detect(raw.decode("utf-8"), skip_gzip=True)
         except UnicodeDecodeError:
+            # If decoding fails, there is no further fallback; resolution will
+            # remain None and we raise below.
             pass
     if resolved_type is None:
         raise ValueError("Unable to detect LevelData type")
