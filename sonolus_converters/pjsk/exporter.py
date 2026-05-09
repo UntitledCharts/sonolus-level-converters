@@ -91,14 +91,20 @@ def _get_note_base_type(
 def export(
     path: str | Path | IO[bytes],
     score: Score,
-    music_id: int = 0,
+    music_id: int,
 ) -> None:
     id_counter = 0
+    ref_counter = 1
 
     def next_id() -> int:
         nonlocal id_counter
         id_counter += 1
         return id_counter
+
+    def next_ref() -> str:
+        nonlocal ref_counter
+        ref_counter += 1
+        return str(ref_counter)
 
     # -- EVENTS --
     event_list: list[dict] = []
@@ -108,8 +114,9 @@ def export(
         if isinstance(note, Bpm):
             event_list.append(
                 {
+                    "$id": next_ref(),
                     "id": next_id(),
-                    "eventType": 0,  # BPM
+                    "eventType": 0,
                     "ticks": _beat_to_ticks(note.beat),
                     "changeValue": note.bpm,
                 }
@@ -118,36 +125,37 @@ def export(
             for point in note.changes:
                 event_list.append(
                     {
+                        "$id": next_ref(),
                         "id": next_id(),
-                        "eventType": 1,  # HighSpeed
+                        "eventType": 1,
                         "ticks": _beat_to_ticks(point.beat),
                         "changeValue": point.timeScale,
                     }
                 )
 
-    # Add default time signature if none exists
     has_time_sig = any(e["eventType"] == 3 for e in event_list)
     if not has_time_sig:
         event_list.append(
             {
+                "$id": next_ref(),
                 "id": next_id(),
-                "eventType": 3,  # TimeSignature
+                "eventType": 3,
                 "ticks": 0,
                 "changeValue": "4/4",
             }
         )
 
-    # # Add default SE volume if none exists
-    # has_se_vol = any(e["eventType"] == 2 for e in event_list)
-    # if not has_se_vol:
-    #     event_list.append(
-    #         {
-    #             "id": next_id(),
-    #             "eventType": 2,  # SeVolume
-    #             "ticks": 0,
-    #             "changeValue": 1.0,
-    #         }
-    #     )
+    has_se_vol = any(e["eventType"] == 2 for e in event_list)
+    if not has_se_vol:
+        event_list.append(
+            {
+                "$id": next_ref(),
+                "id": next_id(),
+                "eventType": 2,
+                "ticks": 0,
+                "changeValue": 1.0,
+            }
+        )
 
     # -- NOTES --
     note_dicts: list[dict] = []
@@ -173,6 +181,7 @@ def export(
             max_ticks = ticks
 
         return {
+            "$id": next_ref(),
             "id": nid,
             "ticks": ticks,
             "laneStart": lane_start,
@@ -290,6 +299,7 @@ def export(
                     max_ticks = ticks
 
                 n = {
+                    "$id": next_ref(),
                     "id": nid,
                     "ticks": ticks,
                     "laneStart": lane_start,
@@ -345,6 +355,7 @@ def export(
 
                 note_dicts.append(
                     {
+                        "$id": next_ref(),
                         "id": nid,
                         "ticks": ticks,
                         "laneStart": lane_start,
@@ -367,6 +378,7 @@ def export(
             id_counter = reserved_ids[-1]
 
     pjsk_data = {
+        "$id": "1",
         "VersionCode": 10000,
         "MusicScoreEventDataList": event_list,
         "EventArray": [],
