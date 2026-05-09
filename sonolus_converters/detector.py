@@ -3,7 +3,7 @@ import os
 import gzip
 import json
 import io
-from . import sus, mmws, usc, LevelData
+from . import sus, mmws, usc, pjsk, LevelData
 
 
 def detect(data: Union[os.PathLike, IO[bytes], bytes, str]) -> Union[
@@ -21,6 +21,7 @@ def detect(data: Union[os.PathLike, IO[bytes], bytes, str]) -> Union[
             "compress_pysekai",
         ],
     ],
+    Tuple[Literal["pjsk"], Literal[""]],
     None,
 ]:
     """Parse the data and determine the format of the score
@@ -54,6 +55,10 @@ def detect(data: Union[os.PathLike, IO[bytes], bytes, str]) -> Union[
     format_spec = mmws.detect(data)
     if format_spec:
         return ("mmw", format_spec)
+
+    # PJSK internal score (base64 encoded gzip json)
+    if pjsk.detect(data):
+        return ("pjsk", "")
 
     # Binary dection over
     try:

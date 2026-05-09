@@ -228,7 +228,7 @@ def load(fp: IO) -> Score:
     ]
 
     def _process_tsg(
-        item: Tuple[str, Dict[str, Any]]
+        item: Tuple[str, Dict[str, Any]],
     ) -> Optional[Tuple[int, TimeScaleGroup]]:
         name, ent = item
         idx = _parse_tsg_index(name)

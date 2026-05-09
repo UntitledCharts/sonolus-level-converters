@@ -10,8 +10,9 @@ Any file type listed here supports conversions between and from.
 - `.mmws`
 - `.ccmmws`
 - `.unchmmws`
+- `.pjsk` - PJSK internal score class (base64 encoded gzipped JSON)
 
-- `chart_cyanvas LevelData` - (returns a identical copy of the original usc, except without time signatures) **hold mids are broken**
+- `chart_cyanvas LevelData` - (returns a identical copy of the original usc, except without time signatures) **hold mids and guides are broken**
 
 # Partial Support
 Any file type listed here will have some support.

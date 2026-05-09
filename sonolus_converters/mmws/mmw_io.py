@@ -273,7 +273,7 @@ def guide_color_to_color(guide_color: int):
 def color_to_guide_color(
     color: Literal[
         "neutral", "red", "green", "blue", "yellow", "purple", "cyan", "black"
-    ]
+    ],
 ):
     match color:
         case "neutral":
