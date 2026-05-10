@@ -608,7 +608,6 @@ class Score:
         max_beat = max(tmp_notes, key=lambda x: x.beat).beat
 
         # BAR_INTERVALの小節長で分割したリストを作成する
-        print(max_beat // BAR_INTERVAL)
         split_tmp_notes = [list() for _ in range(int(max_beat // BAR_INTERVAL + 1))]
 
         # note.beatの値に対応するリストにノーツを入れる

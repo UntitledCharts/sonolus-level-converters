@@ -284,7 +284,7 @@ def export(
 
                     if conn.critical is None:
                         category = 13  # Hidden
-                        critical = 0
+                        critical = 1 if note.critical else 0
                     else:
                         category = 2  # Connection
 
@@ -337,11 +337,9 @@ def export(
                     category = 9  # Guide
                     note_base_type = 10  # Guide
                 elif i == len(note.midpoints) - 1:
-                    if len(note.midpoints) == 2:
-                        category = 9  # Guide (2-point guides use cat 9 for end)
-                    else:
-                        category = 10  # GuideEnd
-                    note_base_type = 13  # GuideEnd
+                    category = 10  # GuideEnd
+                    note_base_type = 13
+                    note_line_type = 0  # GuideEnd forces linear
                 else:
                     category = 11  # GuideHidden
                     note_base_type = 14  # GuideHiddenConnection

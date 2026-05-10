@@ -34,71 +34,6 @@ def _convert_lane(lane_start: int, lane_end: int) -> tuple[float, float]:
     return lane, size
 
 
-def _sus_lane(lane: float, size: float) -> int:
-    return int(lane - size + 8)
-
-
-BEAT_EPSILON = 1 / TICKS_PER_BEAT
-
-
-def _fix_overlaps(notes: list) -> None:
-    from collections import defaultdict
-
-    point_map: defaultdict[tuple[float, int], list] = defaultdict(list)
-
-    for note in notes:
-        if isinstance(note, Single):
-            key = (round(note.beat, 6), _sus_lane(note.lane, note.size))
-            point_map[key].append(note)
-        elif isinstance(note, Slide):
-            for conn in note.connections:
-                key = (round(conn.beat, 6), _sus_lane(conn.lane, conn.size))
-                point_map[key].append(conn)
-        elif isinstance(note, Guide):
-            for mp in note.midpoints:
-                key = (round(mp.beat, 6), _sus_lane(mp.lane, mp.size))
-                point_map[key].append(mp)
-
-    occupied: set[tuple[float, int]] = set()
-    collisions: list[tuple[tuple[float, int], list]] = []
-    for key, points in point_map.items():
-        if len(points) < 2:
-            occupied.add(key)
-        else:
-            collisions.append((key, points))
-
-    for key, points in collisions:
-
-        ends = [p for p in points if isinstance(p, SlideEndPoint)]
-        others = [p for p in points if not isinstance(p, SlideEndPoint)]
-
-        offset = 1
-        for p in ends:
-            while (round(p.beat - BEAT_EPSILON * offset, 6), key[1]) in occupied:
-                offset += 1
-            p.beat -= BEAT_EPSILON * offset
-            occupied.add((round(p.beat, 6), key[1]))
-            offset += 1
-
-        if ends:
-            offset = 1
-            for p in others:
-                while (round(p.beat + BEAT_EPSILON * offset, 6), key[1]) in occupied:
-                    offset += 1
-                p.beat += BEAT_EPSILON * offset
-                occupied.add((round(p.beat, 6), key[1]))
-                offset += 1
-        else:
-            occupied.add(key)
-            offset = 1
-            for p in others[1:]:
-                while (round(p.beat + BEAT_EPSILON * offset, 6), key[1]) in occupied:
-                    offset += 1
-                p.beat += BEAT_EPSILON * offset
-                occupied.add((round(p.beat, 6), key[1]))
-                offset += 1
-
-
 def _decode(data: bytes) -> dict:
     decoded = base64.b64decode(data)
     with gzip.GzipFile(fileobj=io.BytesIO(decoded), mode="rb") as gz:
@@ -184,8 +119,6 @@ def load(data: os.PathLike | IO[bytes] | bytes | str) -> Score:
         if not n.get("IsSingle", True):
             continue
         _build_single(n, notes)
-
-    _fix_overlaps(notes)
 
     score = Score(metadata=metadata, notes=notes)
     score.sort_by_beat()
@@ -361,9 +294,6 @@ def _build_guide(chain: list[dict], notes: list) -> None:
                 timeScaleGroup=0,
             )
         )
-
-    if midpoints:
-        midpoints[-1].ease = "linear"
 
     guide = Guide(color=color, fade="none", midpoints=midpoints)
     notes.append(guide)
