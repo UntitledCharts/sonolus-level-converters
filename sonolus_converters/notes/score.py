@@ -1,4 +1,6 @@
+from copy import deepcopy
 from dataclasses import dataclass, asdict
+from math import floor
 from .metadata import MetaData, validate_metadata_dict_values
 from .bpm import Bpm, validate_bpm_dict_values
 from .timescale import TimeScaleGroup, validate_timescale_dict_values
@@ -18,6 +20,7 @@ from .slide import (
     validate_slide_dict_values,
 )
 from .guide import Guide, GuidePoint, validate_guide_dict_values
+from .volume import Volume, validate_volume_dict_values
 
 
 def usc_lanes_to_sus_lanes(lane: float, size: float) -> int:
@@ -257,7 +260,15 @@ class InvalidNoteError(Exception):
 class Score:
     metadata: MetaData
     notes: list[
-        Bpm | TimeScaleGroup | Single | Skill | FeverStart | FeverChance | Slide | Guide
+        Bpm
+        | TimeScaleGroup
+        | Volume
+        | Single
+        | Skill
+        | FeverStart
+        | FeverChance
+        | Slide
+        | Guide
     ]
 
     def validate(self) -> bool:
@@ -298,6 +309,11 @@ class Score:
                 if validation_result:
                     note_dict, error_message = validation_result
                     raise InvalidNoteError(note_dict, "Guide", error_message)
+            elif isinstance(note, Volume):
+                validation_result = validate_volume_dict_values(note_dict)
+                if validation_result:
+                    note_dict, error_message = validation_result
+                    raise InvalidNoteError(note_dict, "Volume", error_message)
             else:
                 raise InvalidNoteError(
                     note_dict, "UNKNOWN NOTE TYPE", "Invalid note type in list."
@@ -413,7 +429,7 @@ class Score:
             if (
                 isinstance(note, Bpm)
                 or isinstance(note, TimeScaleGroup)
-                or isinstance(note, (Skill, FeverStart, FeverChance))
+                or isinstance(note, (Skill, FeverStart, FeverChance, Volume))
             ):
                 notes.append(note)
                 continue
@@ -539,7 +555,7 @@ class Score:
             if (
                 isinstance(note, Bpm)
                 or isinstance(note, TimeScaleGroup)
-                or isinstance(note, (Skill, FeverStart, FeverChance))
+                or isinstance(note, (Skill, FeverStart, FeverChance, Volume))
             ):
                 useful_notes.append(note)
                 continue
@@ -598,7 +614,7 @@ class Score:
             if (
                 isinstance(note, Bpm)
                 or isinstance(note, TimeScaleGroup)
-                or isinstance(note, (Skill, FeverStart, FeverChance))
+                or isinstance(note, (Skill, FeverStart, FeverChance, Volume))
             ):
                 continue
             tmp_notes.append(note)
@@ -618,7 +634,7 @@ class Score:
             if (
                 isinstance(note, Bpm)
                 or isinstance(note, TimeScaleGroup)
-                or isinstance(note, (Skill, FeverStart, FeverChance))
+                or isinstance(note, (Skill, FeverStart, FeverChance, Volume))
             ):
                 continue
 
@@ -628,3 +644,139 @@ class Score:
                 _shift_slide(note, split_tmp_notes)
             elif isinstance(note, Guide):
                 _shift_guide(note, split_tmp_notes)
+
+    def _bpm_timeline(self) -> list[tuple[float, float]]:
+        bpms = sorted(
+            [n for n in self.notes if isinstance(n, Bpm)], key=lambda b: b.beat
+        )
+        if not bpms:
+            return [(0.0, 120.0)]
+        if bpms[0].beat > 0:
+            bpms.insert(0, Bpm(beat=0.0, bpm=bpms[0].bpm))
+        return [(b.beat, b.bpm) for b in bpms]
+
+    def time_at_beat(self, target_beat: float) -> float:
+        timeline = self._bpm_timeline()
+        elapsed = 0.0
+        for i, (beat, bpm) in enumerate(timeline):
+            next_beat = timeline[i + 1][0] if i + 1 < len(timeline) else target_beat
+            segment_end = min(next_beat, target_beat)
+            if segment_end > beat:
+                elapsed += (segment_end - beat) / bpm * 60.0
+            if segment_end >= target_beat:
+                break
+        return elapsed
+
+    def beat_at_time(self, target_time: float) -> float:
+        timeline = self._bpm_timeline()
+        elapsed = 0.0
+        for i, (beat, bpm) in enumerate(timeline):
+            next_beat = timeline[i + 1][0] if i + 1 < len(timeline) else float("inf")
+            segment_duration = (next_beat - beat) / bpm * 60.0
+            if elapsed + segment_duration >= target_time:
+                remaining = target_time - elapsed
+                return beat + remaining * bpm / 60.0
+            elapsed += segment_duration
+        last_beat, last_bpm = timeline[-1]
+        remaining = target_time - elapsed
+        return last_beat + remaining * last_bpm / 60.0
+
+    def _note_beat(
+        self,
+        note: "Bpm | TimeScaleGroup | Single | Skill | FeverStart | FeverChance | Slide | Guide",
+    ) -> float:
+        if hasattr(note, "beat"):
+            return note.beat
+        if isinstance(note, Slide):
+            return note.connections[0].beat
+        if isinstance(note, Guide):
+            return note.midpoints[0].beat
+        if isinstance(note, TimeScaleGroup):
+            return note.changes[0].beat
+        return 0.0
+
+    def _note_max_beat(
+        self,
+        note: "Bpm | TimeScaleGroup | Single | Skill | FeverStart | FeverChance | Slide | Guide",
+    ) -> float:
+        if isinstance(note, Slide):
+            return note.connections[-1].beat
+        if isinstance(note, Guide):
+            return note.midpoints[-1].beat
+        if isinstance(note, TimeScaleGroup):
+            return note.changes[-1].beat
+        return self._note_beat(note)
+
+    @property
+    def duration(self) -> float:
+        max_beat = 0.0
+        for note in self.notes:
+            mb = self._note_max_beat(note)
+            if mb > max_beat:
+                max_beat = mb
+        return self.time_at_beat(max_beat)
+
+    @property
+    def note_count(self) -> int:
+        EPSILON = 1e-9
+        count = 0
+        for note in self.notes:
+            if isinstance(note, Single):
+                count += 1
+            elif isinstance(note, Slide):
+                connections = sorted(note.connections, key=lambda c: c.beat)
+                next_htb = floor(connections[0].beat * 2 + 1) / 2
+                prev_joint: SlideStartPoint | SlideRelayPoint | None = None
+                for conn in connections:
+                    if isinstance(conn, SlideStartPoint):
+                        if conn.judgeType != "none":
+                            count += 1
+                        prev_joint = conn
+                    elif isinstance(conn, SlideEndPoint):
+                        if conn.judgeType != "none":
+                            count += 1
+                        if prev_joint is not None:
+                            while next_htb + EPSILON < conn.beat:
+                                count += 1
+                                next_htb += 0.5
+                    elif isinstance(conn, SlideRelayPoint):
+                        if conn.type == "attach":
+                            if conn.critical is not None:
+                                count += 1
+                        else:
+                            if conn.critical is not None:
+                                count += 1
+                            if prev_joint is not None:
+                                while next_htb + EPSILON < conn.beat:
+                                    count += 1
+                                    next_htb += 0.5
+                            prev_joint = conn
+        return count
+
+    def cut_by_time(self, start_sec: float, end_sec: float) -> "Score":
+        start_beat = self.beat_at_time(start_sec)
+        end_beat = self.beat_at_time(end_sec)
+        kept: list = []
+        for note in self.notes:
+            if isinstance(note, (Bpm, Volume)):
+                kept.append(deepcopy(note))
+                continue
+            if isinstance(note, TimeScaleGroup):
+                kept.append(deepcopy(note))
+                continue
+            if isinstance(note, (Single, Skill, FeverStart, FeverChance)):
+                if start_beat <= note.beat <= end_beat:
+                    kept.append(deepcopy(note))
+            elif isinstance(note, Slide):
+                if (
+                    note.connections[0].beat <= end_beat
+                    and note.connections[-1].beat >= start_beat
+                ):
+                    kept.append(deepcopy(note))
+            elif isinstance(note, Guide):
+                if (
+                    note.midpoints[0].beat <= end_beat
+                    and note.midpoints[-1].beat >= start_beat
+                ):
+                    kept.append(deepcopy(note))
+        return Score(metadata=deepcopy(self.metadata), notes=kept)

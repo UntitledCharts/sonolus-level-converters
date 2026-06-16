@@ -7,6 +7,7 @@ from ..notes.timescale import TimeScaleGroup, TimeScalePoint
 from ..notes.single import Single, Skill, FeverChance, FeverStart
 from ..notes.slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
 from ..notes.guide import Guide, GuidePoint
+from ..notes.volume import Volume
 from .notetype import SusNoteType
 
 
@@ -103,6 +104,10 @@ def load(fp: TextIO) -> Score:
         added_bpm = True
     if not added_bpm:
         notes.append(Bpm(beat=0, bpm=160.0))
+
+    # Volume
+    for vol in sorted(sus_score.volumes, key=lambda x: x[0]):
+        notes.append(Volume(beat=_tick_to_beat(vol[0]), volume=vol[1]))
 
     # ハイスピ
     exist_initial_time_scale = False

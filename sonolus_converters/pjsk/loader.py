@@ -12,6 +12,7 @@ from ..notes.timescale import TimeScaleGroup, TimeScalePoint
 from ..notes.single import Single
 from ..notes.slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
 from ..notes.guide import Guide, GuidePoint
+from ..notes.volume import Volume
 
 
 TICKS_PER_BEAT = 480
@@ -78,6 +79,8 @@ def load(data: os.PathLike | IO[bytes] | bytes | str) -> Score:
                     changes=[TimeScalePoint(beat=beat, timeScale=float(value))]
                 )
             )
+        elif event_type == 2:
+            notes.append(Volume(beat=beat, volume=float(value)))
 
     if not any(isinstance(n, Bpm) for n in notes):
         notes.insert(0, Bpm(beat=0.0, bpm=120.0))

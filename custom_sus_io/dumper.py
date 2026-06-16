@@ -200,6 +200,15 @@ def dumps(
             + f"{', '.join(til_list)}"
             + '"'
         )
+    # Volume changes
+    if score.volumes:
+        vol_entries = []
+        for tick, value in sorted(score.volumes, key=lambda x: x[0]):
+            vol_entries.append(
+                f"{tick // (ticks_per_beat * 4)}'{tick % (ticks_per_beat * 4)}:{format_number(value)}"
+            )
+        lines.append(f'#VOLUME: "{", ".join(vol_entries)}"')
+
     # default hispeed at start
     lines.append("#HISPEED 00")
     lines.append("#MEASUREHS 00")

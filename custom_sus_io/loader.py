@@ -183,6 +183,19 @@ def process_score(lines: list[tuple[str]], metadata: list[tuple[str]]) -> Score:
             tils.append(new_til)
             til_data_index += 1
 
+    volumes: list[tuple[int, float]] = []
+    for header, data in lines:
+        if header == "VOLUME":
+            for entry in data[1:-1].replace(" ", "").split(","):
+                m = re.search(r"(\d+)'(\d+):(.?\d+(\.?\d+)?)", entry)
+                if m:
+                    measure, tick, value = (
+                        int(m.group(1)),
+                        int(m.group(2)),
+                        float(m.group(3)),
+                    )
+                    volumes.append((fix_til_tick(measure, tick), value))
+
     slide_notes = []
     for stream in slide_streams.values():
         slide_notes += to_slides(stream)
@@ -206,6 +219,7 @@ def process_score(lines: list[tuple[str]], metadata: list[tuple[str]]) -> Score:
         bpms=bpms,
         tils=tils,
         bar_lengths=bar_lengths,
+        volumes=volumes,
     )
 
 

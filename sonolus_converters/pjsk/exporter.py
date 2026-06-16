@@ -12,6 +12,7 @@ from ..notes.timescale import TimeScaleGroup
 from ..notes.single import Single, Skill, FeverChance, FeverStart
 from ..notes.slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
 from ..notes.guide import Guide
+from ..notes.volume import Volume
 
 from .loader import _EASE_MAP_REV, _DIRECTION_MAP_REV
 
@@ -109,7 +110,7 @@ def export(
     # -- EVENTS --
     event_list: list[dict] = []
 
-    # Collect BPM and speed events
+    # Collect BPM, speed, and volume events
     for note in score.notes:
         if isinstance(note, Bpm):
             event_list.append(
@@ -132,6 +133,16 @@ def export(
                         "changeValue": point.timeScale,
                     }
                 )
+        elif isinstance(note, Volume):
+            event_list.append(
+                {
+                    "$id": next_ref(),
+                    "id": next_id(),
+                    "eventType": 2,
+                    "ticks": _beat_to_ticks(note.beat),
+                    "changeValue": note.volume,
+                }
+            )
 
     has_time_sig = any(e["eventType"] == 3 for e in event_list)
     if not has_time_sig:
@@ -201,7 +212,9 @@ def export(
         }
 
     for note in score.notes:
-        if isinstance(note, (Bpm, TimeScaleGroup, Skill, FeverChance, FeverStart)):
+        if isinstance(
+            note, (Bpm, TimeScaleGroup, Volume, Skill, FeverChance, FeverStart)
+        ):
             continue
 
         if isinstance(note, Single):

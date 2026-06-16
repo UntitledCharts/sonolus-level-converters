@@ -10,15 +10,16 @@ Any file type listed here supports conversions between and from.
 - `.mmws`
 - `.ccmmws`
 - `.unchmmws`
-- `.pjsk` - PJSK internal score class (base64 encoded gzipped JSON)
+- `.pjsk/.json` - PJSK internal score class (base64 encoded gzipped JSON)
 
-- `chart_cyanvas LevelData` - (returns a identical copy of the original usc, except without time signatures) **hold mids and guides are broken**
+NOTE: many file types use json internally. We include a detection function that can be used if necessary.
 
 # Partial Support
 Any file type listed here will have some support.
 - `pjsekai LevelData` - Exporting only
 - `next_sekai LevelData` - Exporting only
 - `untitled_sekai LevelData` - Exporting only
+- `chart_cyanvas LevelData` - Exporting only - importing returns a identical copy of the original usc, except without time signatures and heavily broken (**hold mids and guides are broken**)
 
 # Utils/Helpers
 - Strip ChCy Extended Features
@@ -34,6 +35,7 @@ Any file type listed here will have some support.
 - Strip extended features:
     - Strip pysekai extended (to convert to chcy)
 - Sonolus USC file (I don't actually believe this is needed, low priority)
+- Note Speed Ratio in PJSK SUS and PJSK types
 
 # All Sekai LevelDatas, and their servers (including level packers)
 - pjsekai LevelData

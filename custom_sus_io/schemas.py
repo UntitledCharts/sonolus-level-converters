@@ -75,6 +75,7 @@ class Score:
     bpms: list[tuple[int, float]]
     bar_lengths: list[tuple[int, float]]
     tils: list[list[tuple[int, float]]]
+    volumes: list[tuple[int, float]] = field(default_factory=list)
 
 
 @dataclass

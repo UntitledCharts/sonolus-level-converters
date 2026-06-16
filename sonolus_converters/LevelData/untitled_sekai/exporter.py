@@ -530,6 +530,7 @@ def export(
         "single": handle_single,
         "slide": handle_slide,
         "guide": handle_guide,
+        "volume": lambda _: None,
     }
 
     for note in score.notes:

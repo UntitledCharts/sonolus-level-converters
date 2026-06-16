@@ -5,3 +5,4 @@ from .score import Score
 from .single import Single, FeverChance, FeverStart, Skill
 from .slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
 from .timescale import TimeScaleGroup, TimeScalePoint
+from .volume import Volume

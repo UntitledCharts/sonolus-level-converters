@@ -127,7 +127,7 @@ def export(
             case FeverStart():
                 events.append(entry)
             case _:
-                assert_never(entry)
+                pass
 
     if len(timescale_groups) == 0:
         timescale_groups.append(TimeScaleGroup(changes=[TimeScalePoint(0, 1)]))
