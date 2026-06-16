@@ -1,6 +1,6 @@
 from copy import deepcopy
 from dataclasses import dataclass, asdict
-from math import floor
+
 from .metadata import MetaData, validate_metadata_dict_values
 from .bpm import Bpm, validate_bpm_dict_values
 from .timescale import TimeScaleGroup, validate_timescale_dict_values
@@ -718,14 +718,20 @@ class Score:
 
     @property
     def note_count(self) -> int:
-        EPSILON = 1e-9
+        TICKS_PER_BEAT = 480
+        HALF_BEAT = TICKS_PER_BEAT // 2
         count = 0
         for note in self.notes:
             if isinstance(note, Single):
                 count += 1
             elif isinstance(note, Slide):
                 connections = sorted(note.connections, key=lambda c: c.beat)
-                next_htb = floor(connections[0].beat * 2 + 1) / 2
+                start_tick = round(connections[0].beat * TICKS_PER_BEAT)
+                eighth_tick = start_tick + HALF_BEAT
+                if eighth_tick % HALF_BEAT:
+                    eighth_tick -= eighth_tick % HALF_BEAT
+                end_tick = round(connections[-1].beat * TICKS_PER_BEAT)
+                has_ticks = eighth_tick != start_tick and eighth_tick != end_tick
                 prev_joint: SlideStartPoint | SlideRelayPoint | None = None
                 for conn in connections:
                     if isinstance(conn, SlideStartPoint):
@@ -735,10 +741,14 @@ class Score:
                     elif isinstance(conn, SlideEndPoint):
                         if conn.judgeType != "none":
                             count += 1
-                        if prev_joint is not None:
-                            while next_htb + EPSILON < conn.beat:
+                        if prev_joint is not None and has_ticks:
+                            conn_tick = round(conn.beat * TICKS_PER_BEAT)
+                            adj_end = conn_tick
+                            if adj_end % HALF_BEAT:
+                                adj_end += HALF_BEAT - adj_end % HALF_BEAT
+                            while eighth_tick < adj_end:
                                 count += 1
-                                next_htb += 0.5
+                                eighth_tick += HALF_BEAT
                     elif isinstance(conn, SlideRelayPoint):
                         if conn.type == "attach":
                             if conn.critical is not None:
@@ -746,10 +756,14 @@ class Score:
                         else:
                             if conn.critical is not None:
                                 count += 1
-                            if prev_joint is not None:
-                                while next_htb + EPSILON < conn.beat:
+                            if prev_joint is not None and has_ticks:
+                                conn_tick = round(conn.beat * TICKS_PER_BEAT)
+                                adj_end = conn_tick
+                                if adj_end % HALF_BEAT:
+                                    adj_end += HALF_BEAT - adj_end % HALF_BEAT
+                                while eighth_tick < adj_end:
                                     count += 1
-                                    next_htb += 0.5
+                                    eighth_tick += HALF_BEAT
                             prev_joint = conn
         return count
 
