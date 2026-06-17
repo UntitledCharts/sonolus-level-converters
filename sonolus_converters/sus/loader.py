@@ -158,10 +158,9 @@ def load(fp: TextIO) -> Score:
             elif idx == point_length - 1:  # 終点
                 # if the slide note is critical
                 # the end note is ALSO critical
-                # unless specified by samepos_tap == n
-                # a normal sus file will usually never specify as a TAP of the other kind; it might not even be supported.
-                # however, it can specify as a non-critical or critical trace/flick regardless of hold type
-                if slide_note.critical and samepos_tap == None:
+                # unless the samepos_tap is explicitly critical (C_TAP, C_TRACE, C_ELASER)
+                # non-critical tap types (TAP, TRACE, ELASER) don't override — they only set judgeType
+                if slide_note.critical and not _search_is_critical(samepos_tap):
                     critical = True
                 slide_note.append(
                     SlideEndPoint(
