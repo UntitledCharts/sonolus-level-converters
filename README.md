@@ -16,10 +16,13 @@ NOTE: many file types use json internally. We include a detection function that 
 
 # Partial Support
 Any file type listed here will have some support.
-- `pjsekai LevelData` - Exporting only
 - `next_sekai LevelData` - Exporting only
 - `untitled_sekai LevelData` - Exporting only
 - `chart_cyanvas LevelData` - Exporting only - importing returns a identical copy of the original usc, except without time signatures and heavily broken (**hold mids and guides are broken**)
+
+# Unsupported
+- `pjsekai LevelData` - Dead format, no longer supported
+- `Sonolus USC` - DIFFERENT FROM MMW4CC USC
 
 # Utils/Helpers
 - Strip ChCy Extended Features
@@ -27,21 +30,13 @@ Any file type listed here will have some support.
 
 # Known Issues
 - Chart Cyanvas LevelData loading is broken with holds. Converting a Score made from this to sus makes a invalid hold. Converting a Score made from this to usc has extra hold mids.
-- PJSK LevelData is not tested and likely wrong.
 
 # ToDo
-- pjsekai LevelData (from)
 - PySekai LevelData (from) (is this possible??)
 - Strip extended features:
     - Strip pysekai extended (to convert to chcy)
-- Sonolus USC file (I don't actually believe this is needed, low priority)
-- Note Speed Ratio in PJSK SUS and PJSK types
 
 # All Sekai LevelDatas, and their servers (including level packers)
-- pjsekai LevelData
-    - PJSekai (sonolus.sekai.best)
-    - Potato Leaves Archive (ptlv.sevenc7c.com)
-    - Sekai Rush (shut down)
 - Chart Cyanvas LevelData
     - Chart Cyanvas Archive (cc.sevenc7c.com)
 - Next Sekai LevelData
@@ -55,8 +50,8 @@ Any file type listed here will have some support.
 
 [sonolus-pjsekai-js](https://github.com/hyeon2006/sonolus-pjsekai-js/blob/main/lib/src/usc/revert.ts) for the uscToUsc converter
 
-@hyeon2006 for the help
+[@hyeon2006](https://github.com/hyeon2006) for the help
 
-@YarNix for the help and MMWS loaders/exporters
+[@YarNix](https://github.com/YarNix) for the help and MMWS loaders/exporters
 
-@qwewqa for the Next Sekai exporter
+[@qwewqa](https://github.com/qwewqa) for the Next Sekai exporter

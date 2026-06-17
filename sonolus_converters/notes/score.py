@@ -548,6 +548,55 @@ class Score:
                 for mp in note.midpoints:
                     mp.speedRatio = 1.0
 
+    def flatten_speed_ratios_to_layers(self) -> None:
+        tsg_indices: list[int] = []
+        for i, note in enumerate(self.notes):
+            if isinstance(note, TimeScaleGroup):
+                tsg_indices.append(i)
+
+        unique_ratios: set[float] = set()
+        for note in self.notes:
+            if isinstance(note, Single) and note.speedRatio != 1.0:
+                unique_ratios.add(note.speedRatio)
+            elif isinstance(note, Slide):
+                for conn in note.connections:
+                    if conn.speedRatio != 1.0:
+                        unique_ratios.add(conn.speedRatio)
+            elif isinstance(note, Guide):
+                for mp in note.midpoints:
+                    if mp.speedRatio != 1.0:
+                        unique_ratios.add(mp.speedRatio)
+
+        if not unique_ratios:
+            return
+
+        next_group_idx = len(tsg_indices)
+        ratio_to_group: dict[float, int] = {}
+        new_groups: list[TimeScaleGroup] = []
+        for ratio in sorted(unique_ratios):
+            ratio_to_group[ratio] = next_group_idx
+            new_groups.append(
+                TimeScaleGroup(changes=[TimeScalePoint(beat=0.0, timeScale=ratio)])
+            )
+            next_group_idx += 1
+
+        self.notes.extend(new_groups)
+
+        for note in self.notes:
+            if isinstance(note, Single) and note.speedRatio != 1.0:
+                note.timeScaleGroup = ratio_to_group[note.speedRatio]
+                note.speedRatio = 1.0
+            elif isinstance(note, Slide):
+                for conn in note.connections:
+                    if conn.speedRatio != 1.0:
+                        conn.timeScaleGroup = ratio_to_group[conn.speedRatio]
+                        conn.speedRatio = 1.0
+            elif isinstance(note, Guide):
+                for mp in note.midpoints:
+                    if mp.speedRatio != 1.0:
+                        mp.timeScaleGroup = ratio_to_group[mp.speedRatio]
+                        mp.speedRatio = 1.0
+
     def check_skill_overlap(self) -> bool:
         skill_timings = []
         for note in self.notes:
