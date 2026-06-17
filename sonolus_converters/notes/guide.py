@@ -9,6 +9,7 @@ class GuidePoint:
     lane: float
     size: float
     timeScaleGroup: int
+    speedRatio: float = 1.0
 
 
 @dataclass

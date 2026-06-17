@@ -44,6 +44,7 @@ def export(
     allow_layers: bool = False,
     allow_extended_lanes: bool = False,
     delete_damage: bool = True,
+    keep_note_speed_ratios: bool = False,
 ):
     """
     Automatically replaces extended eases and guide colors, deleting fake and damage notes.
@@ -70,6 +71,8 @@ def export(
         score.delete_damage_notes()
     if not allow_extended_lanes:
         score.strip_extended_lanes()
+    if not keep_note_speed_ratios:
+        score.strip_speed_ratios()
     metadata = score.metadata
     notes = score.notes
     taps = []
@@ -136,9 +139,10 @@ def export(
                         width=width,
                         type=SusNoteType.Tap.SKILL,
                         til=note.timeScaleGroup,
+                        speedRatio=note.speedRatio,
                     )
                 )
-            elif note.trace:  # トレース or 金トレース
+            elif note.trace:
                 if note.critical:
                     taps.append(
                         csus.Note(
@@ -147,6 +151,7 @@ def export(
                             width=width,
                             type=SusNoteType.Tap.C_TRACE,
                             til=note.timeScaleGroup,
+                            speedRatio=note.speedRatio,
                         )
                     )
                 else:
@@ -157,9 +162,10 @@ def export(
                             width=width,
                             type=SusNoteType.Tap.TRACE,
                             til=note.timeScaleGroup,
+                            speedRatio=note.speedRatio,
                         )
                     )
-            else:  # タップ or 金タップ
+            else:
                 if note.critical:
                     taps.append(
                         csus.Note(
@@ -168,6 +174,7 @@ def export(
                             width=width,
                             type=SusNoteType.Tap.C_TAP,
                             til=note.timeScaleGroup,
+                            speedRatio=note.speedRatio,
                         )
                     )
                 else:
@@ -178,9 +185,10 @@ def export(
                             width=width,
                             type=SusNoteType.Tap.TAP,
                             til=note.timeScaleGroup,
+                            speedRatio=note.speedRatio,
                         )
                     )
-            if note.direction:  # フリック付
+            if note.direction:
                 if note.direction == "up":
                     directionals.append(
                         csus.Note(
@@ -189,6 +197,7 @@ def export(
                             width=width,
                             type=SusNoteType.Air.UP,
                             til=note.timeScaleGroup,
+                            speedRatio=note.speedRatio,
                         )
                     )
                 elif note.direction == "left":
@@ -199,6 +208,7 @@ def export(
                             width=width,
                             type=SusNoteType.Air.LEFT_UP,
                             til=note.timeScaleGroup,
+                            speedRatio=note.speedRatio,
                         )
                     )
                 elif note.direction == "right":
@@ -209,6 +219,7 @@ def export(
                             width=width,
                             type=SusNoteType.Air.RIGHT_UP,
                             til=note.timeScaleGroup,
+                            speedRatio=note.speedRatio,
                         )
                     )
 
@@ -230,6 +241,7 @@ def export(
                                 width=width,
                                 type=SusNoteType.Air.DOWN,
                                 til=step.timeScaleGroup,
+                                speedRatio=step.speedRatio,
                             )
                         )
                     elif step.ease == "out":  # 減速
@@ -240,6 +252,7 @@ def export(
                                 width=width,
                                 type=SusNoteType.Air.RIGHT_DOWN,
                                 til=step.timeScaleGroup,
+                                speedRatio=step.speedRatio,
                             )
                         )
                     elif step.ease == "linear":  # 直線
@@ -253,6 +266,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Tap.C_ELASER,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                         else:
@@ -263,6 +277,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Tap.ELASER,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                     elif step.judgeType == "trace":  # 始点トレース
@@ -274,6 +289,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Tap.C_TRACE,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                         else:
@@ -284,6 +300,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Tap.TRACE,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                     elif step.judgeType == "normal":
@@ -295,6 +312,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Tap.C_TAP,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                     slide.append(
@@ -304,6 +322,7 @@ def export(
                             width=width,
                             type=SusNoteType.Slide.START,
                             til=step.timeScaleGroup,
+                            speedRatio=step.speedRatio,
                         )
                     )
 
@@ -318,6 +337,7 @@ def export(
                                 width=width,
                                 type=SusNoteType.Tap.TAP,
                                 til=step.timeScaleGroup,
+                                speedRatio=step.speedRatio,
                             )
                         )
                         directionals.append(
@@ -327,6 +347,7 @@ def export(
                                 width=width,
                                 type=SusNoteType.Air.DOWN,
                                 til=step.timeScaleGroup,
+                                speedRatio=step.speedRatio,
                             )
                         )
                     elif step.ease == "out":  # 減速
@@ -337,6 +358,7 @@ def export(
                                 width=width,
                                 type=SusNoteType.Tap.TAP,
                                 til=step.timeScaleGroup,
+                                speedRatio=step.speedRatio,
                             )
                         )
                         directionals.append(
@@ -346,6 +368,7 @@ def export(
                                 width=width,
                                 type=SusNoteType.Air.RIGHT_DOWN,
                                 til=step.timeScaleGroup,
+                                speedRatio=step.speedRatio,
                             )
                         )
                     elif step.ease == "linear":  # 直線
@@ -359,6 +382,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Slide.STEP,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                         else:  # 可視中継点
@@ -369,6 +393,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Slide.VISIBLE_STEP,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                     elif step.type == "attach":  # 無視中継点
@@ -379,6 +404,7 @@ def export(
                                 width=width,
                                 type=SusNoteType.Tap.FLICK,
                                 til=step.timeScaleGroup,
+                                speedRatio=step.speedRatio,
                             )
                         )
                         slide.append(
@@ -388,6 +414,7 @@ def export(
                                 width=width,
                                 type=SusNoteType.Slide.VISIBLE_STEP,
                                 til=step.timeScaleGroup,
+                                speedRatio=step.speedRatio,
                             )
                         )
 
@@ -403,6 +430,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Tap.C_ELASER,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                         else:
@@ -413,6 +441,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Tap.ELASER,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                     elif step.judgeType == "trace":  # 終点トレース
@@ -424,6 +453,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Tap.C_TRACE,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                         else:
@@ -434,6 +464,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Tap.TRACE,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                     elif step.judgeType == "normal":
@@ -446,6 +477,7 @@ def export(
                                         width=width,
                                         type=SusNoteType.Tap.C_TAP,
                                         til=step.timeScaleGroup,
+                                        speedRatio=step.speedRatio,
                                     )
                                 )
                     if step.direction:  # フリック付
@@ -457,6 +489,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Air.UP,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                         elif step.direction == "left":
@@ -467,6 +500,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Air.LEFT_UP,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                         elif step.direction == "right":
@@ -477,6 +511,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Air.RIGHT_UP,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                     slide.append(
@@ -486,6 +521,7 @@ def export(
                             width=width,
                             type=SusNoteType.Slide.END,
                             til=step.timeScaleGroup,
+                            speedRatio=step.speedRatio,
                         )
                     )
             slides.append(slide)
@@ -509,6 +545,7 @@ def export(
                                 width=width,
                                 type=SusNoteType.Tap.C_ELASER,
                                 til=step.timeScaleGroup,
+                                speedRatio=step.speedRatio,
                             )
                         )
                     elif note.color == "green":
@@ -519,6 +556,7 @@ def export(
                                 width=width,
                                 type=SusNoteType.Tap.ELASER,
                                 til=step.timeScaleGroup,
+                                speedRatio=step.speedRatio,
                             )
                         )
 
@@ -530,6 +568,7 @@ def export(
                                 width=width,
                                 type=SusNoteType.Air.DOWN,
                                 til=step.timeScaleGroup,
+                                speedRatio=step.speedRatio,
                             )
                         )
                     elif step.ease == "out":  # 減速
@@ -540,6 +579,7 @@ def export(
                                 width=width,
                                 type=SusNoteType.Air.RIGHT_DOWN,
                                 til=step.timeScaleGroup,
+                                speedRatio=step.speedRatio,
                             )
                         )
                     elif step.ease == "linear":  # 直線
@@ -551,6 +591,7 @@ def export(
                             width=width,
                             type=SusNoteType.Guide.START,
                             til=step.timeScaleGroup,
+                            speedRatio=step.speedRatio,
                         )
                     )
 
@@ -564,6 +605,7 @@ def export(
                                 width=width,
                                 type=SusNoteType.Tap.C_ELASER,
                                 til=step.timeScaleGroup,
+                                speedRatio=step.speedRatio,
                             )
                         )
                     elif note.color == "green":
@@ -575,6 +617,7 @@ def export(
                             width=width,
                             type=SusNoteType.Guide.END,
                             til=step.timeScaleGroup,
+                            speedRatio=step.speedRatio,
                         )
                     )
 
@@ -589,6 +632,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Tap.C_ELASER,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                         elif note.color == "green":
@@ -599,6 +643,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Tap.ELASER,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                         directionals.append(
@@ -608,6 +653,7 @@ def export(
                                 width=width,
                                 type=SusNoteType.Air.DOWN,
                                 til=step.timeScaleGroup,
+                                speedRatio=step.speedRatio,
                             )
                         )
                     elif step.ease == "out":  # 減速
@@ -619,6 +665,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Tap.C_ELASER,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                         elif note.color == "green":
@@ -629,6 +676,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Tap.ELASER,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                         directionals.append(
@@ -638,6 +686,7 @@ def export(
                                 width=width,
                                 type=SusNoteType.Air.RIGHT_DOWN,
                                 til=step.timeScaleGroup,
+                                speedRatio=step.speedRatio,
                             )
                         )
                     elif step.ease == "linear":  # 直線
@@ -649,6 +698,7 @@ def export(
                                     width=width,
                                     type=SusNoteType.Tap.C_ELASER,
                                     til=step.timeScaleGroup,
+                                    speedRatio=step.speedRatio,
                                 )
                             )
                         elif note.color == "green":
@@ -660,6 +710,7 @@ def export(
                             width=width,
                             type=SusNoteType.Guide.STEP,
                             til=step.timeScaleGroup,
+                            speedRatio=step.speedRatio,
                         )
                     )
             guides.append(guide)

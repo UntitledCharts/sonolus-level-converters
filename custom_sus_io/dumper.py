@@ -158,17 +158,19 @@ def dumps(
 
     bar_lengths_in_ticks.reverse()
 
-    def push_raw(tick: int, info: str, data: str, til: int = 0):
+    def push_raw(
+        tick: int, info: str, data: str, til: int = 0, speedRatio: float = 1.0
+    ):
         for bar_length in bar_lengths_in_ticks:
             if tick >= bar_length.start_tick:
                 current_measure = bar_length.measure + int(
                     (tick - bar_length.start_tick) / ticks_per_beat / bar_length.value
                 )
                 note_map = note_maps[f"{current_measure:03}{info}"]
-                # store raw as [offset, data, til]
-                note_map["raws"].append([tick - bar_length.start_tick, data, til])
+                note_map["raws"].append(
+                    [tick - bar_length.start_tick, data, til, speedRatio]
+                )
                 note_map["ticks_per_measure"] = int(bar_length.value * ticks_per_beat)
-                # if til for this tag hasn't been set yet, set it from the first raw
                 if note_map["til"] is None:
                     note_map["til"] = til
                 break
@@ -215,21 +217,21 @@ def dumps(
     lines.append("")
 
     for note in taps:
-        # taps have .til (always an int)
         push_raw(
             note.tick,
             f"1{base36.dumps(note.lane)}",
             f"{note.type}{base36.dumps(note.width)}",
             note.til,
+            note.speedRatio,
         )
 
     for note in directionals:
-        # directionals now also have .til
         push_raw(
             note.tick,
             f"5{base36.dumps(note.lane)}",
             f"{note.type}{base36.dumps(note.width)}",
             note.til,
+            note.speedRatio,
         )
 
     slide_provider = ChannelProvider()
@@ -237,7 +239,6 @@ def dumps(
         start_tick = steps[0].tick
         end_tick = steps[-1].tick
         channel = slide_provider.generate_channel(start_tick, end_tick)
-        # TIL for a slide/stream is taken from the first step/relay (always present)
         slide_til = steps[0].til
         for note in steps:
             push_raw(
@@ -245,15 +246,14 @@ def dumps(
                 f"3{base36.dumps(note.lane)}{base36.dumps(channel)}",
                 f"{note.type}{base36.dumps(note.width)}",
                 slide_til,
+                note.speedRatio,
             )
 
-    # ガイドノーツに対応
     guide_provider = ChannelProvider()
     for steps in guides:
         start_tick = steps[0].tick
         end_tick = steps[-1].tick
         channel = guide_provider.generate_channel(start_tick, end_tick)
-        # TIL for a guide is taken from the first step/relay (always present)
         guide_til = steps[0].til
         for note in steps:
             push_raw(
@@ -261,32 +261,45 @@ def dumps(
                 f"9{base36.dumps(note.lane)}{base36.dumps(channel)}",
                 f"{note.type}{base36.dumps(note.width)}",
                 guide_til,
+                note.speedRatio,
             )
 
-    # Emit note maps, inserting #HISPEED changes before chart lines as needed.
-    current_hispeed = "00"  # matches the default emitted earlier
+    current_hispeed = "00"
     for tag, note_map in note_maps.items():
         gcd = note_map["ticks_per_measure"]
         for raw in note_map["raws"]:
             gcd = math.gcd(raw[0], gcd)
         data = {}
+        speed_data = {}
+        has_speed_ratios = False
         for raw in note_map["raws"]:
-            # raw layout: [offset, data, til]
-            data[(raw[0] % note_map["ticks_per_measure"])] = raw[1]
+            offset = raw[0] % note_map["ticks_per_measure"]
+            data[offset] = raw[1]
+            sr = raw[3] if len(raw) > 3 else 1.0
+            speed_data[offset] = sr
+            if sr != 1.0:
+                has_speed_ratios = True
 
-        # Determine til for this chart line (from note_map["til"], default 0)
         til_num = note_map["til"] or 0
         til_b36 = base36.dumps(til_num).zfill(2).upper()
 
-        # Insert HISPEED line if it changes
         if til_b36 != current_hispeed:
             lines.append(f"#HISPEED {til_b36}")
             current_hispeed = til_b36
 
-        values = []
-        for i in range(0, note_map["ticks_per_measure"], gcd):
-            values.append(data.get(i) or "00")
-        lines.append(f'#{tag}:{"".join(values)}')  # no space on these lines
+        if has_speed_ratios:
+            values = []
+            for i in range(0, note_map["ticks_per_measure"], gcd):
+                d = data.get(i) or "00"
+                sr = speed_data.get(i, 1.0)
+                sr_str = format_number(sr)
+                values.append(f"{d},{sr_str}")
+            lines.append(f'#{tag}:{" ".join(values)}')
+        else:
+            values = []
+            for i in range(0, note_map["ticks_per_measure"], gcd):
+                values.append(data.get(i) or "00")
+            lines.append(f'#{tag}:{"".join(values)}')
 
     lines.append("")
 

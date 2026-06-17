@@ -244,6 +244,22 @@ def to_note_objects(
     assert (
         current_til_id != None
     ), "Place notes (and fever/skills) after the HISPEED line"
+    if "," in data:
+        entries = re.findall(r"([0-9a-z]{2}),([-]?[0-9]+\.?[0-9]*)", data)
+        measure = int(header[:3])
+        total = len(entries)
+        return [
+            Note(
+                tick=to_tick(measure, i, total),
+                lane=int(header[4], 36),
+                width=int(value[1], 36),
+                type=int(value[0], 36),
+                til=current_til_id,
+                speedRatio=float(speed_str),
+            )
+            for i, (value, speed_str) in enumerate(entries)
+            if value != "00"
+        ]
     return [
         Note(
             tick=tick,

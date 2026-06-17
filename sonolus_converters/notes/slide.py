@@ -11,6 +11,7 @@ class SlideStartPoint:
     lane: float
     size: float
     timeScaleGroup: int
+    speedRatio: float = 1.0
     type: str = "start"
 
 
@@ -24,6 +25,7 @@ class SlideRelayPoint:
     type: Literal["tick", "attach"]
     critical: bool | None = None
     fake: bool = False
+    speedRatio: float = 1.0
 
 
 @dataclass
@@ -34,6 +36,7 @@ class SlideEndPoint:
     lane: float
     size: float
     timeScaleGroup: int
+    speedRatio: float = 1.0
     direction: Literal["left", "up", "right"] | None = None
     type: str = "end"
 

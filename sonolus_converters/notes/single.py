@@ -43,6 +43,7 @@ class Single:
     size: float
     fake: bool = False  # isdummy for UntitledSekai
     timeScaleGroup: int
+    speedRatio: float = 1.0
     trace: bool | None = None
     direction: Literal["left", "up", "right"] | None = None
     type: Literal["single", "damage"] = "single"

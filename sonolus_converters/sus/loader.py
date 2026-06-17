@@ -153,13 +153,10 @@ def load(fp: TextIO) -> Score:
                         lane=lane,
                         size=size,
                         timeScaleGroup=point.til,
+                        speedRatio=point.speedRatio,
                     )
                 )
             elif idx == point_length - 1:  # 終点
-                # if the slide note is critical
-                # the end note is ALSO critical
-                # unless the samepos_tap is explicitly critical (C_TAP, C_TRACE, C_ELASER)
-                # non-critical tap types (TAP, TRACE, ELASER) don't override — they only set judgeType
                 if slide_note.critical and not _search_is_critical(samepos_tap):
                     critical = True
                 slide_note.append(
@@ -170,6 +167,7 @@ def load(fp: TextIO) -> Score:
                         lane=lane,
                         size=size,
                         timeScaleGroup=point.til,
+                        speedRatio=point.speedRatio,
                         direction=direction,
                     )
                 )
@@ -182,6 +180,7 @@ def load(fp: TextIO) -> Score:
                     timeScaleGroup=point.til,
                     type="tick",
                     critical=slide_note.critical,
+                    speedRatio=point.speedRatio,
                 )
                 if point.type == SusNoteType.Slide.VISIBLE_STEP:
                     if samepos_tap == SusNoteType.Tap.FLICK:
@@ -216,7 +215,12 @@ def load(fp: TextIO) -> Score:
                     guide_note.color = "yellow"
             guide_note.append(
                 GuidePoint(
-                    beat=beat, ease=ease, lane=lane, size=size, timeScaleGroup=point.til
+                    beat=beat,
+                    ease=ease,
+                    lane=lane,
+                    size=size,
+                    timeScaleGroup=point.til,
+                    speedRatio=point.speedRatio,
                 )
             )
         notes.append(guide_note)
@@ -274,6 +278,7 @@ def load(fp: TextIO) -> Score:
                 lane=lane,
                 size=size,
                 timeScaleGroup=note.til,
+                speedRatio=note.speedRatio,
                 trace=trace,
                 direction=direction,
             )

@@ -243,6 +243,7 @@ def export(
                     note_line_type=0,
                     note_base_type=note_base_type,
                     direction=direction,
+                    speed_ratio=note.speedRatio,
                 )
             )
 
@@ -319,7 +320,7 @@ def export(
                     "laneEnd": lane_end,
                     "category": category,
                     "type": critical,
-                    "speedRatio": 1.0,
+                    "speedRatio": conn.speedRatio,
                     "noteLineType": note_line_type,
                     "noteBaseType": note_base_type,
                     "previousConnectionId": prev_conn,
@@ -373,7 +374,7 @@ def export(
                         "laneEnd": lane_end,
                         "category": category,
                         "type": critical,
-                        "speedRatio": 1.0,
+                        "speedRatio": mp.speedRatio,
                         "noteLineType": note_line_type,
                         "noteBaseType": note_base_type,
                         "previousConnectionId": prev_conn,

@@ -54,6 +54,7 @@ def load(fp: TextIO) -> Score:
                         lane=obj["lane"],
                         size=obj["size"],
                         timeScaleGroup=obj["timeScaleGroup"],
+                        speedRatio=obj.get("speedRatio", 1.0),
                         trace=obj["trace"],
                         direction=obj["direction"],
                         type="single",
@@ -66,6 +67,7 @@ def load(fp: TextIO) -> Score:
                         lane=obj["lane"],
                         size=obj["size"],
                         timeScaleGroup=obj["timeScaleGroup"],
+                        speedRatio=obj.get("speedRatio", 1.0),
                         type=type,
                     )
                 )
@@ -77,6 +79,7 @@ def load(fp: TextIO) -> Score:
                         lane=obj["lane"],
                         size=obj["size"],
                         timeScaleGroup=obj["timeScaleGroup"],
+                        speedRatio=obj.get("speedRatio", 1.0),
                         trace=obj["trace"],
                     )
                 )
@@ -94,6 +97,7 @@ def load(fp: TextIO) -> Score:
                             lane=point["lane"],
                             size=point["size"],
                             timeScaleGroup=point["timeScaleGroup"],
+                            speedRatio=point.get("speedRatio", 1.0),
                         )
                     )
                 elif point["type"] in ("tick", "attach"):
@@ -107,6 +111,7 @@ def load(fp: TextIO) -> Score:
                                 timeScaleGroup=point["timeScaleGroup"],
                                 type=point["type"],
                                 critical=point["critical"],
+                                speedRatio=point.get("speedRatio", 1.0),
                             )
                         )
                     else:
@@ -118,6 +123,7 @@ def load(fp: TextIO) -> Score:
                                 size=point["size"],
                                 timeScaleGroup=point["timeScaleGroup"],
                                 type=point["type"],
+                                speedRatio=point.get("speedRatio", 1.0),
                             )
                         )
                 elif point["type"] == "end":
@@ -130,6 +136,7 @@ def load(fp: TextIO) -> Score:
                                 lane=point["lane"],
                                 size=point["size"],
                                 timeScaleGroup=point["timeScaleGroup"],
+                                speedRatio=point.get("speedRatio", 1.0),
                                 direction=point["direction"],
                             )
                         )
@@ -142,6 +149,7 @@ def load(fp: TextIO) -> Score:
                                 lane=point["lane"],
                                 size=point["size"],
                                 timeScaleGroup=point["timeScaleGroup"],
+                                speedRatio=point.get("speedRatio", 1.0),
                             )
                         )
             notelist.append(slide)
@@ -156,6 +164,7 @@ def load(fp: TextIO) -> Score:
                         lane=point["lane"],
                         size=point["size"],
                         timeScaleGroup=point["timeScaleGroup"],
+                        speedRatio=point.get("speedRatio", 1.0),
                     )
                 )
             notelist.append(guide)

@@ -64,6 +64,7 @@ def load(data: os.PathLike | IO[bytes] | bytes | str) -> Score:
     )
 
     notes: list = []
+    tsg: TimeScaleGroup | None = None
 
     for event in pjsk.get("MusicScoreEventDataList", []):
         event_type = event["eventType"]
@@ -74,11 +75,10 @@ def load(data: os.PathLike | IO[bytes] | bytes | str) -> Score:
         if event_type == 0:
             notes.append(Bpm(beat=beat, bpm=float(value)))
         elif event_type == 1:
-            notes.append(
-                TimeScaleGroup(
-                    changes=[TimeScalePoint(beat=beat, timeScale=float(value))]
-                )
-            )
+            if tsg is None:
+                tsg = TimeScaleGroup()
+                notes.append(tsg)
+            tsg.append(TimeScalePoint(beat=beat, timeScale=float(value)))
         elif event_type == 2:
             notes.append(Volume(beat=beat, volume=float(value)))
 
@@ -136,6 +136,7 @@ def _build_single(n: dict, notes: list) -> None:
     lane, size = _convert_lane(n["laneStart"], n["laneEnd"])
     critical = note_type == 1
     direction_val = n.get("direction", 0)
+    speed_ratio = n.get("speedRatio", 1.0)
 
     if category == 14:
         return
@@ -148,6 +149,7 @@ def _build_single(n: dict, notes: list) -> None:
                 lane=lane,
                 size=size,
                 timeScaleGroup=0,
+                speedRatio=speed_ratio,
                 trace=False,
                 direction=None,
             )
@@ -163,6 +165,7 @@ def _build_single(n: dict, notes: list) -> None:
                 lane=lane,
                 size=size,
                 timeScaleGroup=0,
+                speedRatio=speed_ratio,
                 trace=False,
                 direction=direction,
             )
@@ -175,6 +178,7 @@ def _build_single(n: dict, notes: list) -> None:
                 lane=lane,
                 size=size,
                 timeScaleGroup=0,
+                speedRatio=speed_ratio,
                 trace=True,
                 direction=None,
             )
@@ -190,6 +194,7 @@ def _build_single(n: dict, notes: list) -> None:
                 lane=lane,
                 size=size,
                 timeScaleGroup=0,
+                speedRatio=speed_ratio,
                 trace=True,
                 direction=direction,
             )
@@ -207,6 +212,7 @@ def _build_slide(chain: list[dict], notes: list) -> None:
         ease = _EASE_MAP.get(n.get("noteLineType", 0), "linear")
         category = n["category"]
         note_type = n["type"]
+        speed_ratio = n.get("speedRatio", 1.0)
 
         if i == 0:
             if category in (5, 7):
@@ -225,6 +231,7 @@ def _build_slide(chain: list[dict], notes: list) -> None:
                     lane=lane,
                     size=size,
                     timeScaleGroup=0,
+                    speedRatio=speed_ratio,
                 )
             )
         elif i == len(chain) - 1:
@@ -249,6 +256,7 @@ def _build_slide(chain: list[dict], notes: list) -> None:
                     lane=lane,
                     size=size,
                     timeScaleGroup=0,
+                    speedRatio=speed_ratio,
                     direction=direction,
                 )
             )
@@ -269,6 +277,7 @@ def _build_slide(chain: list[dict], notes: list) -> None:
                     timeScaleGroup=0,
                     type="attach" if is_skip else "tick",
                     critical=relay_critical,
+                    speedRatio=speed_ratio,
                 )
             )
 
@@ -295,6 +304,7 @@ def _build_guide(chain: list[dict], notes: list) -> None:
                 lane=lane,
                 size=size,
                 timeScaleGroup=0,
+                speedRatio=n.get("speedRatio", 1.0),
             )
         )
 

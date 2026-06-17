@@ -62,6 +62,7 @@ class Note:
     width: int
     type: int
     til: int
+    speedRatio: float = 1.0
 
 
 @dataclass_json(letter_case=LetterCase.CAMEL)

@@ -537,6 +537,58 @@ class Score:
                     )
         self.notes = notes
 
+    def strip_speed_ratios(self) -> None:
+        for note in self.notes:
+            if isinstance(note, Single):
+                note.speedRatio = 1.0
+            elif isinstance(note, Slide):
+                for conn in note.connections:
+                    conn.speedRatio = 1.0
+            elif isinstance(note, Guide):
+                for mp in note.midpoints:
+                    mp.speedRatio = 1.0
+
+    def flatten_layers_to_speed_ratios(self) -> None:
+        tsgs: list[TimeScaleGroup] = [
+            n for n in self.notes if isinstance(n, TimeScaleGroup)
+        ]
+        if len(tsgs) <= 1:
+            return
+
+        convertible: dict[int, float] = {}
+        for i, tsg in enumerate(tsgs):
+            if i == 0:
+                continue
+            if len(tsg.changes) == 1:
+                convertible[i] = tsg.changes[0].timeScale
+            # else: not convertible, will be stripped to group 0
+
+        def _apply(
+            obj: (
+                Single | SlideStartPoint | SlideRelayPoint | SlideEndPoint | GuidePoint
+            ),
+        ) -> None:
+            grp = obj.timeScaleGroup
+            if grp == 0:
+                return
+            if grp in convertible:
+                obj.speedRatio *= convertible[grp]
+            obj.timeScaleGroup = 0
+
+        for note in self.notes:
+            if isinstance(note, Single):
+                _apply(note)
+            elif isinstance(note, Slide):
+                for conn in note.connections:
+                    _apply(conn)
+            elif isinstance(note, Guide):
+                for mp in note.midpoints:
+                    _apply(mp)
+
+        self.notes = [
+            n for n in self.notes if not isinstance(n, TimeScaleGroup) or n is tsgs[0]
+        ]
+
     def check_skill_overlap(self) -> bool:
         skill_timings = []
         for note in self.notes:
