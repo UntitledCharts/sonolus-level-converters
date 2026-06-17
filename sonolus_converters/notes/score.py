@@ -3,7 +3,7 @@ from dataclasses import dataclass, asdict
 
 from .metadata import MetaData, validate_metadata_dict_values
 from .bpm import Bpm, validate_bpm_dict_values
-from .timescale import TimeScaleGroup, validate_timescale_dict_values
+from .timescale import TimeScaleGroup, TimeScalePoint, validate_timescale_dict_values
 from .single import (
     Single,
     Skill,
