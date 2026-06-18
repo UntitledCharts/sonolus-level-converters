@@ -127,6 +127,9 @@ def read_note_data(
         data["judgeType"] = "trace"
     if type == "mid":
         hold_step_type = read_int(fbin)
+        # Normal (0): changes shape + adds combo (tick + critical)
+        # Hidden (1): changes shape, no combo (tick + critical=None)
+        # Skip (2): no shape change, adds combo (attach + critical)
         match hold_step_type:
             case 0:  # Normal tick
                 data["type"] = "tick"

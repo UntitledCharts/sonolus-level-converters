@@ -304,6 +304,8 @@ def export(
 
                     note_base_type = _get_note_base_type(category, False, False, False)
                     direction = 0
+                    # Skip (attach): isSkip=true, no shape change but adds combo
+                    # Normal/Hidden (tick): isSkip=false, changes shape
                     is_skip = conn.type == "attach"
                     prev_conn = reserved_ids[i - 1]
                     next_conn = reserved_ids[i + 1] if i + 1 < len(reserved_ids) else -1

@@ -266,6 +266,9 @@ def _build_slide(chain: list[dict], notes: list) -> None:
             else:
                 relay_critical = note_type == 1
 
+            # Normal (category != 13, not skip): changes shape + adds combo (tick + critical)
+            # Hidden (category 13): changes shape, no combo (tick + critical=None)
+            # Skip (isSkip=true): no shape change, adds combo (attach + critical)
             is_skip = n.get("isSkip", False)
 
             connections.append(

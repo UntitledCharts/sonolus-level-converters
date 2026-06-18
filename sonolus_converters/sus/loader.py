@@ -1,5 +1,5 @@
-import custom_sus_io as csus
 from typing import TextIO, Literal
+from dataclasses import dataclass
 from ..notes.score import Score
 from ..notes.metadata import MetaData
 from ..notes.bpm import Bpm
@@ -8,293 +8,630 @@ from ..notes.single import Single, Skill, FeverChance, FeverStart
 from ..notes.slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
 from ..notes.guide import Guide, GuidePoint
 from ..notes.volume import Volume
-from .notetype import SusNoteType
+
+TICKS_PER_BEAT = 480
+MIN_LANE = 2
+MAX_LANE = 13
+FEVER_LANE = 15
 
 
-# tickをbeatに変換する
+@dataclass
+class _SusNote:
+    tick: int
+    lane: int
+    width: int
+    type: int
+    til: int = 0
+    speedRatio: float = 1.0
+
+
+@dataclass
+class _Bar:
+    measure: int
+    ticks_per_measure: int
+    ticks: int
+
+
 def _tick_to_beat(tick: int) -> float:
-    return round(float(tick / 480), 6)
+    return round(float(tick / TICKS_PER_BEAT), 6)
 
 
-# susのレーン記法からuscのレーン記法に変換する
-def _sus_lanes_to_usc_lanes(lane: int, width: int) -> float:
-    return float(lane + (width / 2) - 8)
+def _sus_to_usc_lane(lane: int, width: int) -> float:
+    return float(lane + width / 2 - 8)
 
 
-# susのノーツサイズ記法からuscのノーツサイズ記法に変換する
-def _sus_notesize_to_usc_notesize(width: int) -> float:
+def _sus_to_usc_size(width: int) -> float:
     return float(width / 2)
 
 
-# 同じ位置にあるノーツを探す
-def _search_samepos_note(
-    note_info: tuple[int, int, int], notes: list, remove: bool
-) -> int | None:
-    for note in notes[:]:
-        if (note.tick, note.lane, note.til) == note_info:
-            if remove:
-                notes.remove(note)
-            return note.type
-    return None
+def _note_key(tick: int, lane: int) -> str:
+    return f"{tick}-{lane}"
 
 
-# クリティカルか調べる
-def _search_is_critical(tap_note: int | None) -> bool:
-    if (
-        tap_note == SusNoteType.Tap.C_TAP
-        or tap_note == SusNoteType.Tap.C_TRACE
-        or tap_note == SusNoteType.Tap.C_ELASER
-    ):
-        return True
-    return False
+# SUS PARSING
 
 
-# トレースか調べる
-def _search_is_trace(tap_note: int | None) -> bool:
-    if tap_note == SusNoteType.Tap.TRACE or tap_note == SusNoteType.Tap.C_TRACE:
-        return True
-    return False
+def _get_bars(bar_lengths: list[tuple[int, float]], ticks_per_beat: int) -> list[_Bar]:
+    if not bar_lengths:
+        bar_lengths = [(0, 4.0)]
+    sorted_bl = sorted(bar_lengths, key=lambda x: x[0])
+    bars = [_Bar(sorted_bl[0][0], int(sorted_bl[0][1] * ticks_per_beat), 0)]
+    for i in range(1, len(sorted_bl)):
+        measure = sorted_bl[i][0]
+        tpm = int(sorted_bl[i][1] * ticks_per_beat)
+        ticks = int(
+            (measure - sorted_bl[i - 1][0]) * sorted_bl[i - 1][1] * ticks_per_beat
+        )
+        bars.append(_Bar(measure, tpm, ticks))
+    return bars
 
 
-# ロングの始終点のノーツを調べる
-def _search_judge_type(tap_note: int | None) -> Literal["normal", "trace", "none"]:
-    match tap_note:
-        case SusNoteType.Tap.TRACE | SusNoteType.Tap.C_TRACE:
-            return "trace"
-        case SusNoteType.Tap.ELASER | SusNoteType.Tap.C_ELASER:
-            return "none"
-        case _:
-            return "normal"
+def _get_ticks(bars: list[_Bar], measure: int, i: int, total: int) -> int:
+    b_index = 0
+    acc_ticks = 0
+    for idx in range(len(bars)):
+        if bars[idx].measure > measure:
+            break
+        b_index = idx
+        acc_ticks += bars[idx].ticks
+    return (
+        acc_ticks
+        + (measure - bars[b_index].measure) * bars[b_index].ticks_per_measure
+        + (i * bars[b_index].ticks_per_measure) // total
+    )
 
 
-# ロング、ガイドの曲げ方を調べる
-def _search_ease_type(air_note: int | None) -> Literal["in", "out", "linear"]:
-    match air_note:
-        case SusNoteType.Air.DOWN:
-            return "in"
-        case SusNoteType.Air.LEFT_DOWN | SusNoteType.Air.RIGHT_DOWN:
-            return "out"
-        case _:
-            return "linear"
+def _parse_note_cells(data: str) -> list[tuple[str, float]]:
+    if "," not in data:
+        end = len(data) - len(data) % 2
+        return [(data[i : i + 2], 1.0) for i in range(0, end, 2)]
+
+    cells: list[tuple[str, float]] = []
+    i = 0
+    while i < len(data):
+        while i < len(data) and data[i].isspace():
+            i += 1
+        if i + 1 >= len(data):
+            break
+        note_data = data[i : i + 2]
+        i += 2
+        speed_ratio = 1.0
+        if i < len(data) and data[i] == ",":
+            i += 1
+            start = i
+            while i < len(data) and not data[i].isspace() and data[i] != ",":
+                i += 1
+            if i > start:
+                speed_ratio = float(data[start:i])
+        cells.append((note_data, speed_ratio))
+        while i < len(data) and (data[i].isspace() or data[i] == ","):
+            i += 1
+    return cells
 
 
-# フリックの向きを調べる
-def _search_directional_type(
-    air_note: int | None,
-) -> Literal["left", "up", "right"] | None:
-    match air_note:
-        case SusNoteType.Air.UP:
-            return "up"
-        case SusNoteType.Air.LEFT_UP:
-            return "left"
-        case SusNoteType.Air.RIGHT_UP:
-            return "right"
-        case _:
-            return None
+def _get_notes(
+    header: str,
+    data: str,
+    bars: list[_Bar],
+    measure: int,
+    til: int,
+) -> list[_SusNote]:
+    notes: list[_SusNote] = []
+    cells = _parse_note_cells(data)
+    for i, (cell, speed) in enumerate(cells):
+        if len(cell) < 2 or cell == "00":
+            continue
+        tick = _get_ticks(bars, measure, i * 2, len(cells) * 2)
+        lane = int(header[4], 36)
+        width = int(cell[1], 36)
+        ntype = int(cell[0], 36)
+        notes.append(_SusNote(tick, lane, width, ntype, til, speed))
+    return notes
+
+
+def _get_note_stream(stream: list[_SusNote]) -> list[list[_SusNote]]:
+    sorted_stream = sorted(stream, key=lambda n: n.tick)
+    slides: list[list[_SusNote]] = []
+    current: list[_SusNote] = []
+    new_slide = True
+    for note in sorted_stream:
+        if new_slide:
+            current = []
+            new_slide = False
+        current.append(note)
+        if note.type == 2:
+            slides.append(current)
+            new_slide = True
+    return slides
+
+
+def _parse_hispeed_entry(entry: str) -> tuple[int, int, float] | None:
+    apos = entry.find("'")
+    if apos == -1:
+        return None
+    colon = entry.find(":", apos + 1)
+    if colon == -1:
+        return None
+    try:
+        return (
+            int(entry[:apos]),
+            int(entry[apos + 1 : colon]),
+            float(entry[colon + 1 :]),
+        )
+    except ValueError:
+        return None
+
+
+def _is_command(line: str) -> bool:
+    if line[1:2].isdigit():
+        return False
+    first_quote = line.find('"')
+    if first_quote != -1:
+        last_quote = line.rfind('"')
+        if first_quote != last_quote:
+            space = line.find(" ")
+            if space != -1 and ":" in line[:space]:
+                return False
+            return True
+    return ":" not in line
+
+
+# MAIN LOADER
 
 
 def load(fp: TextIO) -> Score:
-    sus_score = csus.load(fp)
-    notes = []
+    return loads(fp.read())
+
+
+def loads(data: str) -> Score:
+    ticks_per_beat = TICKS_PER_BEAT
+    title = ""
+    artist = ""
+    designer = ""
+    wave_offset = 0.0
+    requests: list[str] = []
+
+    bar_lengths: list[tuple[int, float]] = []
+    bpm_definitions: dict[str, float] = {}
+    bpm_data_lines: list[tuple[int, float]] = []
+    til_map: dict[str, int] = {}
+    tils: list[list[tuple[int, float]]] = []
+    til_data_index = 0
+    current_til: int = 0
+    volume_data: list[str] = []
+
+    taps: list[_SusNote] = []
+    directionals: list[_SusNote] = []
+    slide_streams: dict[int, list[_SusNote]] = {}
+    guide_streams: dict[int, list[_SusNote]] = {}
+
+    # PHASE 1: first pass to get bar_lengths and ticks_per_beat
+    lines_to_process: list[str] = []
+    for raw_line in data.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("#"):
+            continue
+        lines_to_process.append(line)
+
+        if _is_command(line):
+            space = line.find(" ", 1)
+            if space == -1:
+                continue
+            key = line[1:space].upper()
+            value = line[space + 1 :].strip()
+            if value.startswith('"') and value.endswith('"'):
+                value = value[1:-1]
+            if key == "REQUEST":
+                parts = value.split()
+                if len(parts) == 2 and parts[0] == "ticks_per_beat":
+                    ticks_per_beat = int(parts[1])
+        else:
+            colon = line.find(":", 1)
+            if colon == -1:
+                continue
+            header = line[1:colon].strip()
+            line_data = line[colon + 1 :].strip()
+            if len(header) == 5 and header.endswith("02") and header[:3].isdigit():
+                bar_lengths.append((int(header[:3]), float(line_data)))
+
+    if not bar_lengths:
+        bar_lengths.append((0, 4.0))
+
+    bars = _get_bars(bar_lengths, ticks_per_beat)
+
+    # PHASE 2: second pass for everything else (needs bars for tick calculation)
+    for line in lines_to_process:
+        if _is_command(line):
+            space = line.find(" ", 1)
+            if space == -1:
+                continue
+            key = line[1:space].upper()
+            value = line[space + 1 :].strip()
+            if value.startswith('"') and value.endswith('"'):
+                value = value[1:-1]
+
+            if key == "TITLE":
+                title = value
+            elif key == "ARTIST":
+                artist = value
+            elif key == "DESIGNER":
+                designer = value
+            elif key == "WAVEOFFSET":
+                wave_offset = float(value)
+            elif key == "REQUEST":
+                requests.append(value)
+            elif key == "HISPEED":
+                tid = til_map.get(value)
+                if tid is not None:
+                    current_til = tid
+            continue
+
+        colon = line.find(":", 1)
+        if colon == -1:
+            continue
+        header = line[1:colon].strip()
+        line_data = line[colon + 1 :].strip()
+
+        if len(header) not in (5, 6):
+            if header.startswith("VOLUME"):
+                volume_data.append(line_data)
+            continue
+
+        if len(header) == 5 and header.endswith("02") and header[:3].isdigit():
+            pass  # already handled
+        elif header.startswith("BPM") and len(header) == 5:
+            bpm_definitions[header[3:]] = float(line_data)
+        elif len(header) == 5 and header.endswith("08"):
+            measure = int(header[:3])
+            stripped = line_data.replace(" ", "")
+            pairs = [
+                stripped[j : j + 2]
+                for j in range(0, len(stripped) - len(stripped) % 2, 2)
+            ]
+            for j, pair in enumerate(pairs):
+                if pair == "00":
+                    continue
+                tick = _get_ticks(bars, measure, j, len(pairs))
+                bpm = bpm_definitions.get(pair, 120.0)
+                bpm_data_lines.append((tick, bpm))
+        elif header.startswith("TIL") and len(header) == 5:
+            til_id = header[3:]
+            til_map[til_id] = til_data_index
+            stripped = line_data.strip('"').replace(" ", "")
+            new_til: list[tuple[int, float]] = []
+            for entry_str in stripped.split(","):
+                parsed = _parse_hispeed_entry(entry_str)
+                if parsed:
+                    measure, tick_offset, value = parsed
+                    measure_ticks = _get_ticks(bars, measure, 0, 1)
+                    new_til.append((measure_ticks + tick_offset, value))
+            tils.append(new_til)
+            til_data_index += 1
+        elif len(header) == 5 and header[3] == "1":
+            measure = int(header[:3])
+            taps.extend(_get_notes(header, line_data, bars, measure, current_til))
+        elif len(header) == 5 and header[3] == "5":
+            measure = int(header[:3])
+            directionals.extend(
+                _get_notes(header, line_data, bars, measure, current_til)
+            )
+        elif len(header) == 6 and header[3] == "3":
+            measure = int(header[:3])
+            channel = int(header[5], 36)
+            slide_streams.setdefault(channel, []).extend(
+                _get_notes(header, line_data, bars, measure, current_til)
+            )
+        elif len(header) == 6 and header[3] == "9":
+            measure = int(header[:3])
+            channel = int(header[5], 36)
+            guide_streams.setdefault(channel, []).extend(
+                _get_notes(header, line_data, bars, measure, current_til)
+            )
+
+    # Build slide/guide note streams
+    slides: list[list[_SusNote]] = []
+    for stream in slide_streams.values():
+        slides.extend(_get_note_stream(stream))
+
+    guides: list[list[_SusNote]] = []
+    for stream in guide_streams.values():
+        guides.extend(_get_note_stream(stream))
+
+    # Parse volumes
+    volumes: list[tuple[int, float]] = []
+    for vol_str in volume_data:
+        stripped = vol_str.strip('"').replace(" ", "")
+        for entry_str in stripped.split(","):
+            parsed = _parse_hispeed_entry(entry_str)
+            if parsed:
+                measure, tick_offset, value = parsed
+                measure_ticks = _get_ticks(bars, measure, 0, 1)
+                volumes.append((measure_ticks + tick_offset, value))
+
+    # PHASE 3: SUS → Score (matching ChartMaker susToScore)
+    return _sus_to_score(
+        taps,
+        directionals,
+        slides,
+        guides,
+        sorted(bpm_data_lines, key=lambda x: x[0]),
+        bar_lengths,
+        tils,
+        volumes,
+        title,
+        artist,
+        designer,
+        wave_offset,
+        requests,
+    )
+
+
+def _sus_to_score(
+    sus_taps: list[_SusNote],
+    sus_directionals: list[_SusNote],
+    sus_slides: list[list[_SusNote]],
+    sus_guides: list[list[_SusNote]],
+    sus_bpms: list[tuple[int, float]],
+    bar_lengths: list[tuple[int, float]],
+    tils: list[list[tuple[int, float]]],
+    sus_volumes: list[tuple[int, float]],
+    title: str,
+    artist: str,
+    designer: str,
+    wave_offset: float,
+    requests: list[str],
+) -> Score:
+    # BUILD LOOKUP SETS (matching ChartMaker exactly)
+    flicks: dict[str, Literal["up", "left", "right"]] = {}
+    criticals: set[str] = set()
+    step_ignore: set[str] = set()
+    ease_ins: set[str] = set()
+    ease_outs: set[str] = set()
+    slide_keys: set[str] = set()
+    frictions: set[str] = set()
+    hidden_holds: set[str] = set()
+
+    for d in sus_directionals:
+        key = _note_key(d.tick, d.lane)
+        if d.type == 1:
+            flicks[key] = "up"
+        elif d.type == 3:
+            flicks[key] = "left"
+        elif d.type == 4:
+            flicks[key] = "right"
+        elif d.type == 2:
+            ease_ins.add(key)
+        elif d.type in (5, 6):
+            ease_outs.add(key)
+
+    for t in sus_taps:
+        key = _note_key(t.tick, t.lane)
+        if t.type == 2:
+            criticals.add(key)
+        elif t.type == 3:
+            step_ignore.add(key)
+        elif t.type == 5:
+            frictions.add(key)
+        elif t.type == 6:
+            criticals.add(key)
+            frictions.add(key)
+        elif t.type == 7:
+            hidden_holds.add(key)
+        elif t.type == 8:
+            hidden_holds.add(key)
+            criticals.add(key)
+
+    for slide in sus_slides:
+        for note in slide:
+            if note.type in (1, 2, 3, 5):
+                slide_keys.add(_note_key(note.tick, note.lane))
+
+    notes: list = []
 
     # BPM
-    added_bpm = False
-    for bpm in sorted(sus_score.bpms, key=lambda x: x[0]):
-        notes.append(Bpm(beat=_tick_to_beat(bpm[0]), bpm=bpm[1]))
-        added_bpm = True
-    if not added_bpm:
-        notes.append(Bpm(beat=0, bpm=160.0))
+    if sus_bpms:
+        for tick, bpm in sus_bpms:
+            notes.append(Bpm(beat=_tick_to_beat(tick), bpm=bpm))
+    else:
+        notes.append(Bpm(beat=0, bpm=120.0))
 
     # Volume
-    for vol in sorted(sus_score.volumes, key=lambda x: x[0]):
-        notes.append(Volume(beat=_tick_to_beat(vol[0]), volume=vol[1]))
+    for tick, vol in sus_volumes:
+        notes.append(Volume(beat=_tick_to_beat(tick), volume=vol))
 
-    # ハイスピ
-    exist_initial_time_scale = False
-    time_scale_group = TimeScaleGroup()
-    for til in sus_score.tils:
-        for change in sorted(til, key=lambda x: x[0]):
-            if change[0] == 0:
-                exist_initial_time_scale = True
-            time_scale_group.append(
-                TimeScalePoint(beat=_tick_to_beat(change[0]), timeScale=change[1])
-            )
-    if not exist_initial_time_scale:
-        time_scale_group.insert(0, TimeScalePoint(beat=0.0, timeScale=1.0))
-    notes.append(time_scale_group)
+    # TimeScale (TIL layers)
+    if tils:
+        for til in tils:
+            tsg = TimeScaleGroup()
+            has_initial = False
+            for tick, speed in sorted(til, key=lambda x: x[0]):
+                if tick == 0:
+                    has_initial = True
+                tsg.append(TimeScalePoint(beat=_tick_to_beat(tick), timeScale=speed))
+            if not has_initial:
+                tsg.insert(0, TimeScalePoint(beat=0.0, timeScale=1.0))
+            notes.append(tsg)
+    else:
+        tsg = TimeScaleGroup()
+        tsg.append(TimeScalePoint(beat=0.0, timeScale=1.0))
+        notes.append(tsg)
 
-    # スライド
-    for slide in sus_score.slides:
-        point_length = len(slide)
-        slide_note = Slide(critical=False)
-        for idx, point in zip(range(point_length), sorted(slide, key=lambda x: x.tick)):
-            samepos_tap = _search_samepos_note(
-                (point.tick, point.lane, point.til), sus_score.taps, remove=True
-            )
-            samepos_direction = _search_samepos_note(
-                (point.tick, point.lane, point.til), sus_score.directionals, remove=True
-            )
-            critical = _search_is_critical(samepos_tap)
-            judge_type = _search_judge_type(samepos_tap)
-            ease = _search_ease_type(samepos_direction)
-            direction = _search_directional_type(samepos_direction)
-            beat = _tick_to_beat(point.tick)
-            lane = _sus_lanes_to_usc_lanes(point.lane, point.width)
-            size = _sus_notesize_to_usc_notesize(point.width)
+    # TAPS → Singles/Skills/Fever
+    fever_chance: float | None = None
+    fever_start: float | None = None
 
-            if idx == 0:  # 始点
-                slide_note.critical = critical
-                slide_note.append(
-                    SlideStartPoint(
-                        beat=beat,
-                        critical=critical,
-                        ease=ease,
-                        judgeType=judge_type,
-                        lane=lane,
-                        size=size,
-                        timeScaleGroup=point.til,
-                        speedRatio=point.speedRatio,
-                    )
-                )
-            elif idx == point_length - 1:  # 終点
-                if slide_note.critical and not _search_is_critical(samepos_tap):
-                    critical = True
-                slide_note.append(
-                    SlideEndPoint(
-                        beat=beat,
-                        critical=critical,
-                        judgeType=judge_type,
-                        lane=lane,
-                        size=size,
-                        timeScaleGroup=point.til,
-                        speedRatio=point.speedRatio,
-                        direction=direction,
-                    )
-                )
-            else:  # 中継点
-                relay_point = SlideRelayPoint(
-                    beat=beat,
-                    ease=ease,
-                    lane=lane,
-                    size=size,
-                    timeScaleGroup=point.til,
-                    type="tick",
-                    critical=slide_note.critical,
-                    speedRatio=point.speedRatio,
-                )
-                if point.type == SusNoteType.Slide.VISIBLE_STEP:
-                    if samepos_tap == SusNoteType.Tap.FLICK:
-                        relay_point.type = "attach"
-
-                elif point.type == SusNoteType.Slide.STEP:
-                    relay_point.critical = None
-                slide_note.append(relay_point)
-
-        notes.append(slide_note)
-
-    # ガイド
-    for guide in sus_score.guides:
-        point_length = len(guide)
-        guide_note = Guide(color="green", fade="out")
-        for idx, point in zip(range(point_length), sorted(guide, key=lambda x: x.tick)):
-            samepos_tap = _search_samepos_note(
-                (point.tick, point.lane, point.til), sus_score.taps, remove=True
-            )
-            samepos_direction = _search_samepos_note(
-                (point.tick, point.lane, point.til), sus_score.directionals, remove=True
-            )
-            critical = _search_is_critical(samepos_tap)
-            judge_type = _search_judge_type(samepos_tap)
-            ease = _search_ease_type(samepos_direction)
-            beat = _tick_to_beat(point.tick)
-            lane = _sus_lanes_to_usc_lanes(point.lane, point.width)
-            size = _sus_notesize_to_usc_notesize(point.width)
-
-            if idx == 0:  # 始点
-                if critical:
-                    guide_note.color = "yellow"
-            guide_note.append(
-                GuidePoint(
-                    beat=beat,
-                    ease=ease,
-                    lane=lane,
-                    size=size,
-                    timeScaleGroup=point.til,
-                    speedRatio=point.speedRatio,
-                )
-            )
-        notes.append(guide_note)
-
-    # タップ、フリック系
-    fever_chance = None
-    fever_start = None
-    for note in sorted(sus_score.taps, key=lambda x: x.tick):
-        if (
-            note.type == SusNoteType.Tap.SKILL and note.width == 1 and note.lane == 0
-        ):  # (4) SKILL ACTIVATIONS (or damage notes in Chunithm)
+    for note in sorted(sus_taps, key=lambda x: x.tick):
+        if note.type == 4:
             notes.append(Skill(beat=_tick_to_beat(note.tick)))
             continue
-        elif note.type == SusNoteType.Tap.SKILL:
-            continue  # what's that doing there?
-        # fever start/end events
-        if (
-            note.lane == 15
-            and note.width == 1
-            and note.type in [SusNoteType.Tap.TAP, SusNoteType.Tap.C_TAP]
-        ):
-            if note.type == SusNoteType.Tap.TAP:
-                if fever_chance:
-                    raise AttributeError("Can only have 1 fever chance per chart.")
-                notes.append(FeverChance(beat=_tick_to_beat(note.tick)))
+
+        if note.lane == FEVER_LANE and note.width == 1:
+            if note.type == 1:
                 fever_chance = _tick_to_beat(note.tick)
-                if fever_start:
-                    if fever_start < fever_chance:
-                        raise AttributeError("Fever end must be after fever start.")
-            else:
-                if fever_start:
-                    raise AttributeError(
-                        "Can only have 1 fever start (end of chance) per chart."
-                    )
-                notes.append(FeverStart(beat=_tick_to_beat(note.tick)))
+                notes.append(FeverChance(beat=fever_chance))
+            elif note.type == 2:
                 fever_start = _tick_to_beat(note.tick)
-                if fever_chance:
-                    if fever_start < fever_chance:
-                        raise AttributeError("Fever end must be after fever start.")
-            continue  # don't load them
-        samepos_direction = _search_samepos_note(
-            (note.tick, note.lane, note.til), sus_score.directionals, remove=True
-        )
-        beat = _tick_to_beat(note.tick)
-        critical = _search_is_critical(note.type)
-        lane = _sus_lanes_to_usc_lanes(note.lane, note.width)
-        size = _sus_notesize_to_usc_notesize(note.width)
-        trace = _search_is_trace(note.type)
-        direction = _search_directional_type(samepos_direction)
+                notes.append(FeverStart(beat=fever_start))
+            continue
+
+        if note.type in (7, 8):
+            continue
+
+        if note.lane < MIN_LANE or note.lane > MAX_LANE:
+            continue
+
+        key = _note_key(note.tick, note.lane)
+        if key in slide_keys:
+            continue
+
+        is_critical = key in criticals
+        is_friction = key in frictions
+        direction = flicks.get(key)
 
         notes.append(
             Single(
-                beat=beat,
-                critical=critical,
-                lane=lane,
-                size=size,
+                beat=_tick_to_beat(note.tick),
+                critical=is_critical,
+                lane=_sus_to_usc_lane(note.lane, note.width),
+                size=_sus_to_usc_size(note.width),
                 timeScaleGroup=note.til,
                 speedRatio=note.speedRatio,
-                trace=trace,
+                trace=is_friction,
                 direction=direction,
             )
         )
-    if fever_chance and not fever_start:
-        raise AttributeError("Must have a fever start if a fever chance is defined.")
-    if fever_start and not fever_chance:
-        raise AttributeError("Must have a fever chance if a fever start is defined.")
+
+    # SLIDES & GUIDES (matching ChartMaker slideFillFunc)
+    def _process_holds(hold_list: list[list[_SusNote]], is_guide: bool) -> None:
+        for hold in hold_list:
+            start_notes = [n for n in hold if n.type in (1, 2)]
+            if not start_notes or len(hold) < 2:
+                continue
+
+            start_key = _note_key(hold[0].tick, hold[0].lane)
+            critical = start_key in criticals
+
+            if is_guide:
+                guide_note = Guide(color="yellow" if critical else "green", fade="out")
+                for note in hold:
+                    key = _note_key(note.tick, note.lane)
+                    ease: Literal["in", "out", "linear"] = "linear"
+                    if key in ease_ins:
+                        ease = "in"
+                    elif key in ease_outs:
+                        ease = "out"
+
+                    guide_note.append(
+                        GuidePoint(
+                            beat=_tick_to_beat(note.tick),
+                            ease=ease,
+                            lane=_sus_to_usc_lane(note.lane, note.width),
+                            size=_sus_to_usc_size(note.width),
+                            timeScaleGroup=note.til,
+                            speedRatio=note.speedRatio,
+                        )
+                    )
+                notes.append(guide_note)
+            else:
+                slide_note = Slide(critical=critical)
+                for note in hold:
+                    key = _note_key(note.tick, note.lane)
+                    ease: Literal["in", "out", "linear"] = "linear"
+                    if key in ease_ins:
+                        ease = "in"
+                    elif key in ease_outs:
+                        ease = "out"
+                    beat = _tick_to_beat(note.tick)
+                    lane = _sus_to_usc_lane(note.lane, note.width)
+                    size = _sus_to_usc_size(note.width)
+
+                    if note.type == 1:  # start
+                        is_hidden = key in hidden_holds
+                        is_friction = key in frictions
+                        if is_hidden:
+                            judge_type = "none"
+                        elif is_friction:
+                            judge_type = "trace"
+                        else:
+                            judge_type = "normal"
+
+                        slide_note.append(
+                            SlideStartPoint(
+                                beat=beat,
+                                critical=critical,
+                                ease=ease,
+                                judgeType=judge_type,
+                                lane=lane,
+                                size=size,
+                                timeScaleGroup=note.til,
+                                speedRatio=note.speedRatio,
+                            )
+                        )
+
+                    elif note.type == 2:  # end
+                        is_hidden = key in hidden_holds
+                        is_friction = key in frictions
+                        if is_hidden:
+                            judge_type = "none"
+                        elif is_friction:
+                            judge_type = "trace"
+                        else:
+                            judge_type = "normal"
+
+                        end_critical = critical or (key in criticals)
+                        direction = flicks.get(key)
+
+                        slide_note.append(
+                            SlideEndPoint(
+                                beat=beat,
+                                critical=end_critical,
+                                judgeType=judge_type,
+                                lane=lane,
+                                size=size,
+                                timeScaleGroup=note.til,
+                                speedRatio=note.speedRatio,
+                                direction=direction,
+                            )
+                        )
+
+                    elif note.type in (3, 5):  # mid
+                        # Normal (type 3, no step_ignore): changes shape + adds combo (tick + critical)
+                        # Hidden (type 5): changes shape, no combo (tick + critical=None)
+                        # Skip (type 3 + step_ignore): no shape change, adds combo (attach + critical)
+                        step_type: Literal["tick", "attach"] = "tick"
+                        mid_critical: bool | None = critical
+
+                        if note.type == 5:
+                            mid_critical = None
+                        elif key in step_ignore:
+                            step_type = "attach"
+
+                        slide_note.append(
+                            SlideRelayPoint(
+                                beat=beat,
+                                ease=ease,
+                                lane=lane,
+                                size=size,
+                                timeScaleGroup=note.til,
+                                type=step_type,
+                                critical=mid_critical,
+                                speedRatio=note.speedRatio,
+                            )
+                        )
+
+                notes.append(slide_note)
+
+    _process_holds(sus_slides, False)
+    _process_holds(sus_guides, True)
+
     notes.sort(key=lambda x: x.get_sus_sort_number())
 
     metadata = MetaData(
-        title=sus_score.metadata.title,
-        artist=sus_score.metadata.artist,
-        designer=sus_score.metadata.designer,
-        waveoffset=-sus_score.metadata.waveoffset,
-        requests=sus_score.metadata.requests,
+        title=title,
+        artist=artist,
+        designer=designer,
+        waveoffset=-wave_offset,
+        requests=requests if requests else None,
     )
 
     return Score(metadata, notes)

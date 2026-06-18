@@ -777,7 +777,7 @@ class Score:
         return self.time_at_beat(max_beat)
 
     @property
-    def note_count(self) -> int:
+    def combo_count(self) -> int:
         TICKS_PER_BEAT = 480
         HALF_BEAT = TICKS_PER_BEAT // 2
         count = 0
@@ -826,6 +826,10 @@ class Score:
                                     eighth_tick += HALF_BEAT
                             prev_joint = conn
         return count
+
+    @property
+    def note_count(self) -> int:
+        return self.combo_count
 
     def cut_by_time(self, start_sec: float, end_sec: float) -> "Score":
         start_beat = self.beat_at_time(start_sec)
