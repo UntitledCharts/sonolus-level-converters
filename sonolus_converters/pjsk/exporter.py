@@ -24,6 +24,12 @@ def _beat_to_ticks(beat: float) -> int:
     return round(beat * TICKS_PER_BEAT)
 
 
+def _sanitize_speed_ratio(speed_ratio: float) -> float:
+    if not math.isfinite(speed_ratio) or speed_ratio <= 0.0:
+        return 1.0
+    return speed_ratio
+
+
 def _unconvert_lane(lane: float, size: float) -> tuple[int, int]:
     lane_start = math.floor(lane - size + 5.5 + 0.5)
     lane_end = math.floor(lane + size + 5.5 - 1 + 0.5)
@@ -243,7 +249,7 @@ def export(
                     note_line_type=0,
                     note_base_type=note_base_type,
                     direction=direction,
-                    speed_ratio=note.speedRatio,
+                    speed_ratio=_sanitize_speed_ratio(note.speedRatio),
                 )
             )
 
@@ -252,7 +258,7 @@ def export(
             reserved_ids = list(
                 range(id_counter + 1, id_counter + 1 + len(note.connections))
             )
-            hold_speed_ratio = (
+            hold_speed_ratio = _sanitize_speed_ratio(
                 note.connections[0].speedRatio if note.connections else 1.0
             )
 
@@ -347,7 +353,9 @@ def export(
             reserved_ids = list(
                 range(id_counter + 1, id_counter + 1 + len(note.midpoints))
             )
-            hold_speed_ratio = note.midpoints[0].speedRatio if note.midpoints else 1.0
+            hold_speed_ratio = _sanitize_speed_ratio(
+                note.midpoints[0].speedRatio if note.midpoints else 1.0
+            )
 
             for i, mp in enumerate(note.midpoints):
                 ticks = _beat_to_ticks(mp.beat)

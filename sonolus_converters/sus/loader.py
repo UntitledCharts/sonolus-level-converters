@@ -102,7 +102,9 @@ def _parse_note_cells(data: str) -> list[tuple[str, float]]:
             while i < len(data) and not data[i].isspace() and data[i] != ",":
                 i += 1
             if i > start:
-                speed_ratio = float(data[start:i])
+                sr = float(data[start:i])
+                if sr > 0.0:
+                    speed_ratio = sr
         cells.append((note_data, speed_ratio))
         while i < len(data) and (data[i].isspace() or data[i] == ","):
             i += 1
