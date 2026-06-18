@@ -252,6 +252,9 @@ def export(
             reserved_ids = list(
                 range(id_counter + 1, id_counter + 1 + len(note.connections))
             )
+            hold_speed_ratio = (
+                note.connections[0].speedRatio if note.connections else 1.0
+            )
 
             for i, conn in enumerate(note.connections):
                 ticks = _beat_to_ticks(conn.beat)
@@ -285,6 +288,8 @@ def export(
                         category = 5  # FrictionHide
                     elif conn.direction:
                         category = 3  # Flick
+                    elif not conn.direction and conn.judgeType == "normal":
+                        category = 1  # Long (normal end, no flick/friction)
                     else:
                         category = 1  # Long
 
@@ -322,7 +327,7 @@ def export(
                     "laneEnd": lane_end,
                     "category": category,
                     "type": critical,
-                    "speedRatio": conn.speedRatio,
+                    "speedRatio": hold_speed_ratio,
                     "noteLineType": note_line_type,
                     "noteBaseType": note_base_type,
                     "previousConnectionId": prev_conn,
@@ -342,6 +347,7 @@ def export(
             reserved_ids = list(
                 range(id_counter + 1, id_counter + 1 + len(note.midpoints))
             )
+            hold_speed_ratio = note.midpoints[0].speedRatio if note.midpoints else 1.0
 
             for i, mp in enumerate(note.midpoints):
                 ticks = _beat_to_ticks(mp.beat)
@@ -353,9 +359,9 @@ def export(
                     category = 9  # Guide
                     note_base_type = 10  # Guide
                 elif i == len(note.midpoints) - 1:
-                    category = 10  # GuideEnd
-                    note_base_type = 13
-                    note_line_type = 0  # GuideEnd forces linear
+                    category = 9  # Guide (end uses same category as start)
+                    note_base_type = 13  # GuideEnd
+                    note_line_type = 0
                 else:
                     category = 11  # GuideHidden
                     note_base_type = 14  # GuideHiddenConnection
@@ -376,7 +382,7 @@ def export(
                         "laneEnd": lane_end,
                         "category": category,
                         "type": critical,
-                        "speedRatio": mp.speedRatio,
+                        "speedRatio": hold_speed_ratio,
                         "noteLineType": note_line_type,
                         "noteBaseType": note_base_type,
                         "previousConnectionId": prev_conn,
@@ -391,6 +397,8 @@ def export(
 
             id_counter = reserved_ids[-1]
 
+    note_dicts.sort(key=lambda n: (n["ticks"], n["laneStart"], n["id"]))
+
     pjsk_data = {
         "$id": "1",
         "VersionCode": 10000,
@@ -399,7 +407,7 @@ def export(
         "NoteList": note_dicts,
         "MusicScoreTicksMax": max_ticks,
         "MusicId": music_id,
-        "FullComboDataHash": "",
+        "FullComboDataHash": None,
     }
 
     json_bytes = json.dumps(pjsk_data, separators=(",", ":")).encode("utf-8")
