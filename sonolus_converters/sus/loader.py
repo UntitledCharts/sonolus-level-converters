@@ -459,8 +459,11 @@ def _sus_to_score(
         notes.append(tsg)
 
     # TAPS → Singles/Skills/Fever
+    # Game's AddNormalNoteInfo merges taps at same (tick, lane) via Update,
+    # so we deduplicate by (tick, lane) to avoid double-counting.
     fever_chance: float | None = None
     fever_start: float | None = None
+    seen_tap_keys: set[str] = set()
 
     for note in sorted(sus_taps, key=lambda x: x.tick):
         if note.type == 4:
@@ -485,6 +488,10 @@ def _sus_to_score(
         key = _note_key(note.tick, note.lane)
         if key in slide_keys:
             continue
+
+        if key in seen_tap_keys:
+            continue
+        seen_tap_keys.add(key)
 
         is_critical = key in criticals
         is_friction = key in frictions
