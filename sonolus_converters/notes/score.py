@@ -666,10 +666,9 @@ class Score:
         return score, len(overlaps_at)
 
     # 重なっているノーツをずらす
-    def shift(self):
+    def shift(self, pjsk_safe_overlaps: bool = False):
         tmp_notes = []
 
-        # 一旦、中継点灯を含めた全部のノーツを入れたリストを作る（BPM, ソフランは除外）
         for note in self.notes:
             if (
                 isinstance(note, Bpm)
@@ -680,13 +679,10 @@ class Score:
             tmp_notes.append(note)
         tmp_notes = _convert_tmp_notes(tmp_notes)
 
-        # BAR_INTERVALの小節長で分割したリストを作成するために、リストをいくつ作るか計算する
         max_beat = max(tmp_notes, key=lambda x: x.beat).beat
 
-        # BAR_INTERVALの小節長で分割したリストを作成する
         split_tmp_notes = [list() for _ in range(int(max_beat // BAR_INTERVAL + 1))]
 
-        # note.beatの値に対応するリストにノーツを入れる
         for note in tmp_notes:
             split_tmp_notes[_calc_notelist_index(note)].append(note)
 
@@ -698,12 +694,18 @@ class Score:
             ):
                 continue
 
-            if isinstance(note, Single):
-                _shift_single(note, split_tmp_notes)
-            elif isinstance(note, Slide):
-                _shift_slide(note, split_tmp_notes)
-            elif isinstance(note, Guide):
-                _shift_guide(note, split_tmp_notes)
+            if pjsk_safe_overlaps:
+                # PJSK merges same-(time, lane) notes via noteInfoDict,
+                # so only fix structural slide issues (midpoints out of bounds)
+                if isinstance(note, Slide):
+                    _check_slide(note, split_tmp_notes)
+            else:
+                if isinstance(note, Single):
+                    _shift_single(note, split_tmp_notes)
+                elif isinstance(note, Slide):
+                    _shift_slide(note, split_tmp_notes)
+                elif isinstance(note, Guide):
+                    _shift_guide(note, split_tmp_notes)
 
     def _bpm_timeline(self) -> list[tuple[float, float]]:
         bpms = sorted(

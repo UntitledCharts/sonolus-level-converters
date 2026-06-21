@@ -525,9 +525,10 @@ def export(
     delete_damage: bool = True,
     keep_note_speed_ratios: bool = False,
     measure_extensions: bool = False,
+    use_pjsk_safe_overlaps: bool = False,
 ):
     score = deepcopy(score)
-    score.shift()
+    score.shift(pjsk_safe_overlaps=use_pjsk_safe_overlaps)
     score.replace_extended_ease()
     score.replace_extended_guide_colors()
     score.delete_fake_notes()
