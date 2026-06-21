@@ -207,17 +207,18 @@ def loads(data: str) -> Score:
     slide_streams: dict[int, list[_SusNote]] = {}
     guide_streams: dict[int, list[_SusNote]] = {}
 
-    # PHASE 1: first pass to get bar_lengths and ticks_per_beat
-    lines_to_process: list[str] = []
+    # PHASE 1: first pass to get bar_lengths, ticks_per_beat, and MEASUREBS
+    measure_offset = 0
+    lines_to_process: list[tuple[str, int]] = []  # (line, measure_offset)
     for raw_line in data.splitlines():
         line = raw_line.strip()
         if not line.startswith("#"):
             continue
-        lines_to_process.append(line)
 
         if _is_command(line):
             space = line.find(" ", 1)
             if space == -1:
+                lines_to_process.append((line, measure_offset))
                 continue
             key = line[1:space].upper()
             value = line[space + 1 :].strip()
@@ -227,14 +228,19 @@ def loads(data: str) -> Score:
                 parts = value.split()
                 if len(parts) == 2 and parts[0] == "ticks_per_beat":
                     ticks_per_beat = int(parts[1])
+            elif key == "MEASUREBS":
+                measure_offset = int(value)
         else:
             colon = line.find(":", 1)
             if colon == -1:
+                lines_to_process.append((line, measure_offset))
                 continue
             header = line[1:colon].strip()
             line_data = line[colon + 1 :].strip()
             if len(header) == 5 and header.endswith("02") and header[:3].isdigit():
-                bar_lengths.append((int(header[:3]), float(line_data)))
+                bar_lengths.append((int(header[:3]) + measure_offset, float(line_data)))
+
+        lines_to_process.append((line, measure_offset))
 
     if not bar_lengths:
         bar_lengths.append((0, 4.0))
@@ -242,7 +248,7 @@ def loads(data: str) -> Score:
     bars = _get_bars(bar_lengths, ticks_per_beat)
 
     # PHASE 2: second pass for everything else (needs bars for tick calculation)
-    for line in lines_to_process:
+    for line, m_offset in lines_to_process:
         if _is_command(line):
             space = line.find(" ", 1)
             if space == -1:
@@ -280,11 +286,11 @@ def loads(data: str) -> Score:
             continue
 
         if len(header) == 5 and header.endswith("02") and header[:3].isdigit():
-            pass  # already handled
+            pass  # already handled in phase 1
         elif header.startswith("BPM") and len(header) == 5:
             bpm_definitions[header[3:]] = float(line_data)
         elif len(header) == 5 and header.endswith("08"):
-            measure = int(header[:3])
+            measure = int(header[:3]) + m_offset
             stripped = line_data.replace(" ", "")
             pairs = [
                 stripped[j : j + 2]
@@ -310,21 +316,21 @@ def loads(data: str) -> Score:
             tils.append(new_til)
             til_data_index += 1
         elif len(header) == 5 and header[3] == "1":
-            measure = int(header[:3])
+            measure = int(header[:3]) + m_offset
             taps.extend(_get_notes(header, line_data, bars, measure, current_til))
         elif len(header) == 5 and header[3] == "5":
-            measure = int(header[:3])
+            measure = int(header[:3]) + m_offset
             directionals.extend(
                 _get_notes(header, line_data, bars, measure, current_til)
             )
         elif len(header) == 6 and header[3] == "3":
-            measure = int(header[:3])
+            measure = int(header[:3]) + m_offset
             channel = int(header[5], 36)
             slide_streams.setdefault(channel, []).extend(
                 _get_notes(header, line_data, bars, measure, current_til)
             )
         elif len(header) == 6 and header[3] == "9":
-            measure = int(header[:3])
+            measure = int(header[:3]) + m_offset
             channel = int(header[5], 36)
             guide_streams.setdefault(channel, []).extend(
                 _get_notes(header, line_data, bars, measure, current_til)
