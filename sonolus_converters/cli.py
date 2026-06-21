@@ -68,8 +68,6 @@ def _ask_export_settings(fmt: str) -> dict:
             settings["keep_note_speed_ratios"] = True
         if _ask_yes_no("  Enable MEASUREBS (measures > 999)?"):
             settings["measure_extensions"] = True
-        if _ask_yes_no("  Use PJSK-safe overlaps (keep overlaps the game accepts)?"):
-            settings["use_pjsk_safe_overlaps"] = True
     elif fmt == "pjsk":
         mid = _prompt("  Music ID (default 0): ")
         settings["music_id"] = int(mid) if mid else 0

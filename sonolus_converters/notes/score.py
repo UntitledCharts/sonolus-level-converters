@@ -666,7 +666,7 @@ class Score:
         return score, len(overlaps_at)
 
     # 重なっているノーツをずらす
-    def shift(self, pjsk_safe_overlaps: bool = False):
+    def shift(self):
         tmp_notes = []
 
         for note in self.notes:
@@ -694,18 +694,12 @@ class Score:
             ):
                 continue
 
-            if pjsk_safe_overlaps:
-                # PJSK merges same-(time, lane) notes via noteInfoDict,
-                # so only fix structural slide issues (midpoints out of bounds)
-                if isinstance(note, Slide):
-                    _check_slide(note, split_tmp_notes)
-            else:
-                if isinstance(note, Single):
-                    _shift_single(note, split_tmp_notes)
-                elif isinstance(note, Slide):
-                    _shift_slide(note, split_tmp_notes)
-                elif isinstance(note, Guide):
-                    _shift_guide(note, split_tmp_notes)
+            if isinstance(note, Single):
+                _shift_single(note, split_tmp_notes)
+            elif isinstance(note, Slide):
+                _shift_slide(note, split_tmp_notes)
+            elif isinstance(note, Guide):
+                _shift_guide(note, split_tmp_notes)
 
     def _bpm_timeline(self) -> list[tuple[float, float]]:
         bpms = sorted(

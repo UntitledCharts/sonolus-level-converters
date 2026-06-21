@@ -195,12 +195,13 @@ def _score_to_sus(
                     slide_type = 5 if step.critical is None else 3
                     slide.append(_SusNote(tick, lane, width, slide_type, sr))
 
-                    if step.critical is None and step.type == "tick":
-                        pass  # hidden step, no tap
-                    elif step.type == "attach":
+                    if step.type == "attach":
                         taps.append(_SusNote(tick, lane, width, 3, sr))
-                    elif step.ease != "linear":
+                    elif step.critical is not None and step.ease != "linear":
                         taps.append(_SusNote(tick, lane, width, 1, sr))
+
+                    # Ease directional is written regardless of visibility
+                    if step.ease != "linear":
                         dir_type = 2 if step.ease == "in" else 6
                         directionals.append(_SusNote(tick, lane, width, dir_type, sr))
 
@@ -525,10 +526,9 @@ def export(
     delete_damage: bool = True,
     keep_note_speed_ratios: bool = False,
     measure_extensions: bool = False,
-    use_pjsk_safe_overlaps: bool = False,
 ):
     score = deepcopy(score)
-    score.shift(pjsk_safe_overlaps=use_pjsk_safe_overlaps)
+    score.shift()
     score.replace_extended_ease()
     score.replace_extended_guide_colors()
     score.delete_fake_notes()
