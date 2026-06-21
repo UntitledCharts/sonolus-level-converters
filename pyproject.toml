@@ -1,6 +1,6 @@
 [project]
 name = "sonolus_converters"
-version = "1.0.5"
+version = "1.1.0"
 description = "Convert between PJSK and Sonolus charting files!"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -11,6 +11,9 @@ dependencies = [
     "base36>=0.1.1,<0.2.0",
     "numpy"
 ]
+
+[project.scripts]
+sonolus-converters = "sonolus_converters.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -13,10 +13,8 @@ def detect(data: Union[os.PathLike, IO[bytes], bytes, str]) -> Union[
     Tuple[
         Literal["lvd"],
         Literal[
-            "base",
             "chcy",
             "pysekai",
-            "compress_base",
             "compress_chcy",
             "compress_pysekai",
         ],
