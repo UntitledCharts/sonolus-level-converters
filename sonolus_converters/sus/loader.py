@@ -339,6 +339,25 @@ def loads(data: str) -> Score:
     for stream in guide_streams.values():
         guides.extend(_get_note_stream(stream))
 
+    # Deduplicate slides/guides sharing same start+end (tick, lane).
+    # Game's noteInfoDict merges notes at same (time, lane), so duplicate
+    # slides from different channels collapse into one.
+    def _dedup_holds(holds: list[list[_SusNote]]) -> list[list[_SusNote]]:
+        seen: set[tuple[int, int, int, int]] = set()
+        result: list[list[_SusNote]] = []
+        for hold in holds:
+            if len(hold) < 2:
+                continue
+            key = (hold[0].tick, hold[0].lane, hold[-1].tick, hold[-1].lane)
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(hold)
+        return result
+
+    slides = _dedup_holds(slides)
+    guides = _dedup_holds(guides)
+
     # Parse volumes
     volumes: list[tuple[int, float]] = []
     for vol_str in volume_data:
