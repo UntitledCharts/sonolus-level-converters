@@ -1,7 +1,6 @@
 import base64
 import gzip
 import json
-import io
 import os
 from typing import IO, Literal
 
@@ -36,9 +35,16 @@ def _convert_lane(lane_start: int, lane_end: int) -> tuple[float, float]:
 
 
 def _decode(data: bytes) -> dict:
-    decoded = base64.b64decode(data)
-    with gzip.GzipFile(fileobj=io.BytesIO(decoded), mode="rb") as gz:
-        return json.loads(gz.read())
+    # base64(gzip(json)) (server format), raw gzip(json), or plain json
+    try:
+        return json.loads(gzip.decompress(base64.b64decode(data)))
+    except Exception:
+        pass
+    try:
+        return json.loads(gzip.decompress(data))
+    except Exception:
+        pass
+    return json.loads(data)
 
 
 def load_raw(data: os.PathLike | IO[bytes] | bytes | str) -> dict:

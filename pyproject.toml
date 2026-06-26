@@ -1,6 +1,6 @@
 [project]
 name = "sonolus_converters"
-version = "1.1.1"
+version = "1.1.2"
 description = "Convert between PJSK and Sonolus charting files!"
 readme = "README.md"
 requires-python = ">=3.10"

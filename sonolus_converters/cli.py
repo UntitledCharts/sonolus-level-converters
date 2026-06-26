@@ -1,6 +1,5 @@
 import sys
 import os
-from pathlib import Path
 
 from .detector import detect
 from .version import __version__
@@ -147,21 +146,8 @@ def _detect_or_ask(path: str) -> tuple[str, str]:
     return fmt, spec
 
 
-def _get_output_format(output_path: str) -> str:
-    ext = Path(output_path).suffix.lower()
-    ext_map = {
-        ".sus": "sus",
-        ".usc": "usc",
-        ".mmws": "mmws",
-        ".ccmmws": "mmws",
-        ".unchmmws": "mmws",
-        ".json": "pjsk",
-    }
-    fmt = ext_map.get(ext)
-    if fmt:
-        return fmt
-    print(f"Can't determine output format from extension '{ext}'.")
-    print(f"Supported: {', '.join(OUTPUT_FORMATS)}")
+def _get_output_format() -> str:
+    print(f"Supported output formats: {', '.join(OUTPUT_FORMATS)}")
     return _prompt("Enter output format: ").lower()
 
 
@@ -179,7 +165,7 @@ def interactive():
     print(f"Loaded: {score.combo_count} combo")
 
     output_path = _prompt("Output file path: ").strip('"').strip("'")
-    out_fmt = _get_output_format(output_path)
+    out_fmt = _get_output_format()
     settings = _ask_export_settings(out_fmt)
     _export_score(score, output_path, out_fmt, settings)
     print(f"Exported to {output_path} ({out_fmt})")
@@ -228,7 +214,7 @@ def main():
     else:
         output_path = _prompt("Output file path: ").strip('"').strip("'")
 
-    out_fmt = _get_output_format(output_path)
+    out_fmt = _get_output_format()
     settings = _ask_export_settings(out_fmt)
     _export_score(score, output_path, out_fmt, settings)
     print(f"Exported to {output_path} ({out_fmt})")
