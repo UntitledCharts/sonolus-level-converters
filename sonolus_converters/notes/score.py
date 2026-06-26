@@ -802,9 +802,10 @@ class Score:
                             adj_end = conn_tick
                             if adj_end % HALF_BEAT:
                                 adj_end += HALF_BEAT - adj_end % HALF_BEAT
-                            while eighth_tick < adj_end:
-                                count += 1
-                                eighth_tick += HALF_BEAT
+                            if eighth_tick < adj_end:
+                                steps = (adj_end - eighth_tick) // HALF_BEAT
+                                count += steps
+                                eighth_tick += steps * HALF_BEAT
                     elif isinstance(conn, SlideRelayPoint):
                         if conn.type == "attach":
                             if conn.critical is not None:
@@ -817,9 +818,10 @@ class Score:
                                 adj_end = conn_tick
                                 if adj_end % HALF_BEAT:
                                     adj_end += HALF_BEAT - adj_end % HALF_BEAT
-                                while eighth_tick < adj_end:
-                                    count += 1
-                                    eighth_tick += HALF_BEAT
+                                if eighth_tick < adj_end:
+                                    steps = (adj_end - eighth_tick) // HALF_BEAT
+                                    count += steps
+                                    eighth_tick += steps * HALF_BEAT
                             prev_joint = conn
         return count
 
