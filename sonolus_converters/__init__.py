@@ -4,6 +4,7 @@ from . import usc
 from . import mmws
 from . import pjsk
 from . import scp
+from . import bandori_sus
 from .detector import detect
 from .version import __version__
 from . import utils
