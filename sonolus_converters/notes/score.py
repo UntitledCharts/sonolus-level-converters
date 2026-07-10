@@ -1033,6 +1033,9 @@ class Score:
                             if conn.critical is not None:
                                 count += 1
                         else:
+                            # visible tick adds combo AND the 8th hold tick at
+                            # the same beat also adds combo — this double-count
+                            # is correct and matches the game
                             if conn.critical is not None:
                                 count += 1
                             if prev_joint is not None and has_ticks:
@@ -1094,6 +1097,7 @@ class Score:
                             if conn.critical is not None and conn_tick < cutoff_tick:
                                 count += 1
                         else:
+                            # visible tick + 8th hold tick at same beat = 2 combo (correct)
                             if conn.critical is not None and conn_tick < cutoff_tick:
                                 count += 1
                             if prev_joint is not None and has_ticks:
@@ -1115,7 +1119,7 @@ class Score:
         start_at: float | None = None,
         end_at: float | None = None,
         keep_position: bool = False,
-    ) -> int:
+    ) -> tuple[int, tuple[int, int]]:
         if start_at is None and end_at is None:
             raise ValueError("At least one of start_at or end_at must be specified")
 
@@ -1128,6 +1132,19 @@ class Score:
             start_beat = round(start_beat * TICKS_PER_BEAT) / TICKS_PER_BEAT
         if end_at is not None:
             end_beat = round(end_beat * TICKS_PER_BEAT) / TICKS_PER_BEAT
+
+        cut_start_tick = round(start_beat * TICKS_PER_BEAT)
+        if end_at is not None:
+            cut_end_tick = round(end_beat * TICKS_PER_BEAT)
+        else:
+            max_beat = 0.0
+            for note in self.notes:
+                if isinstance(note, Single):
+                    max_beat = max(max_beat, note.beat)
+                elif isinstance(note, Slide):
+                    for c in note.connections:
+                        max_beat = max(max_beat, c.beat)
+            cut_end_tick = round(max_beat * TICKS_PER_BEAT)
 
         original_total = self.combo_count
         combo_after_raw = 0
@@ -1293,4 +1310,4 @@ class Score:
                     for mp in note.midpoints:
                         mp.beat -= shift
 
-        return combo_before
+        return combo_before, (cut_start_tick, cut_end_tick)

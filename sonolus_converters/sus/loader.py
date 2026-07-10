@@ -504,7 +504,8 @@ def _sus_to_score(
                 notes.append(FeverStart(beat=fever_start))
             continue
 
-        if note.type in (7, 8):
+        # 3=step_ignore marker (Skip category, dropped by game), 7/8=hidden hold markers
+        if note.type in (3, 7, 8):
             continue
 
         if note.lane < MIN_LANE or note.lane > MAX_LANE:
