@@ -526,9 +526,11 @@ def export(
     delete_damage: bool = True,
     keep_note_speed_ratios: bool = False,
     measure_extensions: bool = False,
+    skip_shift: bool = False,
 ):
     score = deepcopy(score)
-    score.shift()
+    if not skip_shift:
+        score.shift()
     score.replace_extended_ease()
     score.replace_extended_guide_colors()
     score.delete_fake_notes()

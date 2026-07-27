@@ -755,6 +755,7 @@ class Score:
                             fade=note.fade,
                             midpoints=midpoints,
                             type=note.type,
+                            color_code=note.color_code,
                         )
                     )
         self.notes = notes
@@ -1238,7 +1239,10 @@ class Score:
                     result_mps = _truncate_guide_end(result_mps, end_beat)
                 if result_mps and len(result_mps) >= 2:
                     new_guide = Guide(
-                        color=note.color, fade=note.fade, midpoints=result_mps
+                        color=note.color,
+                        fade=note.fade,
+                        midpoints=result_mps,
+                        color_code=note.color_code,
                     )
                     kept.append(new_guide)
                     for m in result_mps:

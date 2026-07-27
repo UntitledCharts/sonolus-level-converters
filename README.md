@@ -19,6 +19,7 @@ Any file type listed here will have some support.
 - `next_sekai LevelData` - Exporting only
 - `untitled_sekai LevelData` - Exporting only
 - `chart_cyanvas LevelData` - Exporting only - importing returns a identical copy of the original usc, except without time signatures and heavily broken (**hold mids and guides are broken**)
+- `hololive Dreams sus` - Loading only
 
 # Unsupported
 - `pjsekai LevelData` - Dead format, no longer supported
@@ -32,6 +33,7 @@ Any file type listed here will have some support.
 - Chart Cyanvas LevelData loading is broken with holds. Converting a Score made from this to sus makes a invalid hold. Converting a Score made from this to usc has extra hold mids.
 
 # ToDo
+- hololive Dreams sus export
 - PySekai LevelData (from) (is this possible??)
 - Strip extended features:
     - Strip pysekai extended (to convert to chcy)

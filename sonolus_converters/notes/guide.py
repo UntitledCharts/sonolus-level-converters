@@ -20,6 +20,9 @@ class Guide:
     fade: Literal["in", "out", "none"]
     midpoints: List[GuidePoint] = field(default_factory=list)
     type: str = "guide"
+    # holodori sus guides carry an arbitrary color code
+    # TODO: implement a default map to color if this is set
+    color_code: str | None = None
 
     def append(self, guidepoint: GuidePoint):
         self.midpoints.append(guidepoint)
