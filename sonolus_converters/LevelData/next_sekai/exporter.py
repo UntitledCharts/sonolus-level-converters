@@ -22,6 +22,7 @@ from ...notes import (
     SlideStartPoint,
     SlideEndPoint,
     SlideRelayPoint,
+    convert_holodori_events,
 )
 from ...notes.score import Score
 
@@ -108,7 +109,7 @@ def export(
     timescale_group_entities: list[Entity] = []
     sim_line_eligible_notes: list[Entity] = []
 
-    for entry in score.notes:
+    for entry in convert_holodori_events(score.notes):
         match entry:
             case Bpm():
                 bpm_changes.append(entry)

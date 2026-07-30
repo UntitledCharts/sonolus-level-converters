@@ -20,7 +20,14 @@ from .slide import (
     validate_slide_dict_values,
 )
 from .guide import Guide, GuidePoint, validate_guide_dict_values
+from .holodorievents import (
+    HOLODORI_EVENTS,
+    HolodoriEvent,
+    validate_holodori_event_dict_values,
+)
 from .volume import Volume, validate_volume_dict_values
+
+_EVENTS = (Skill, FeverStart, FeverChance) + HOLODORI_EVENTS
 
 
 def usc_lanes_to_sus_lanes(lane: float, size: float) -> int:
@@ -489,6 +496,7 @@ class Score:
         | Skill
         | FeverStart
         | FeverChance
+        | HolodoriEvent
         | Slide
         | Guide
     ]
@@ -501,7 +509,12 @@ class Score:
 
         for note in self.notes:
             note_dict = asdict(note)
-            if isinstance(note, (Skill, FeverStart, FeverChance)):
+            if isinstance(note, HOLODORI_EVENTS):
+                validation_result = validate_holodori_event_dict_values(note_dict)
+                if validation_result:
+                    note_dict, error_message = validation_result
+                    raise InvalidNoteError(note_dict, note.type, error_message)
+            elif isinstance(note, (Skill, FeverStart, FeverChance)):
                 validation_result = validate_event_dict_values(note_dict)
                 if validation_result:
                     note_dict, error_message = validation_result
@@ -651,7 +664,7 @@ class Score:
             if (
                 isinstance(note, Bpm)
                 or isinstance(note, TimeScaleGroup)
-                or isinstance(note, (Skill, FeverStart, FeverChance, Volume))
+                or isinstance(note, _EVENTS + (Volume,))
             ):
                 notes.append(note)
                 continue
@@ -838,7 +851,7 @@ class Score:
             if (
                 isinstance(note, Bpm)
                 or isinstance(note, TimeScaleGroup)
-                or isinstance(note, (Skill, FeverStart, FeverChance, Volume))
+                or isinstance(note, _EVENTS + (Volume,))
             ):
                 useful_notes.append(note)
                 continue
@@ -896,7 +909,7 @@ class Score:
             if (
                 isinstance(note, Bpm)
                 or isinstance(note, TimeScaleGroup)
-                or isinstance(note, (Skill, FeverStart, FeverChance, Volume))
+                or isinstance(note, _EVENTS + (Volume,))
             ):
                 continue
             tmp_notes.append(note)
@@ -913,7 +926,7 @@ class Score:
             if (
                 isinstance(note, Bpm)
                 or isinstance(note, TimeScaleGroup)
-                or isinstance(note, (Skill, FeverStart, FeverChance, Volume))
+                or isinstance(note, _EVENTS + (Volume,))
             ):
                 continue
 
@@ -1183,7 +1196,7 @@ class Score:
                     kept.append(note)
                 continue
 
-            if isinstance(note, (Skill, FeverChance, FeverStart)):
+            if isinstance(note, _EVENTS):
                 if start_beat <= note.beat <= end_beat:
                     kept.append(note)
                 continue
@@ -1305,7 +1318,7 @@ class Score:
                     note.changes = trimmed
                 elif isinstance(note, (Bpm, Volume)):
                     note.beat = max(0.0, note.beat - shift)
-                elif isinstance(note, (Single, Skill, FeverChance, FeverStart)):
+                elif isinstance(note, (Single,) + _EVENTS):
                     note.beat -= shift
                 elif isinstance(note, Slide):
                     for conn in note.connections:

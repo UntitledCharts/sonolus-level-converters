@@ -8,6 +8,13 @@ from ..notes.metadata import MetaData
 from ..notes.bpm import Bpm
 from ..notes.timescale import TimeScaleGroup, TimeScalePoint
 from ..notes.single import Single
+from ..notes.holodorievents import (
+    HolodoriSkill,
+    HolodoriChargeStart,
+    HolodoriChargeEnd,
+    HolodoriFeverStart,
+    HolodoriFeverEnd,
+)
 from ..notes.slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
 from ..notes.guide import Guide, GuidePoint
 
@@ -95,6 +102,24 @@ def _meta_cells(data: str) -> list[tuple[int, str, int]]:
     return [(p, c, pos) for p, c in cells] if pos > 0 else []
 
 
+def _meta_values(data: str) -> list[tuple[int, int, int]]:
+    """0B/0C/0D grid -> (position, value, total). the cell is a base62 pair, so "10" is 62."""
+    return [
+        (pos, _char_to_int(cell[0]) * 62 + _char_to_int(cell[1]), total)
+        for pos, cell, total in _meta_cells(data)
+    ]
+
+
+_FEVER_POINT_TYPES: dict[tuple[str, int], str] = {
+    ("C", 1): "chargeStart",
+    ("C", 2): "chargeEnd",
+    ("D", 1): "feverStart",
+    ("D", 2): "feverEnd",
+}
+
+_SP_SKILL_RE = re.compile(r"^(\d{3}) (\d+)/(\d+) (\d+)")
+
+
 def load(fp: TextIO) -> Score:
     return loads(fp.read())
 
@@ -111,6 +136,11 @@ def loads(data: str) -> Score:
     nms_definitions: dict[str, float] = {}
     nms_data_lines: list[tuple[int, float]] = []
     color_definitions: dict[str, str] = {}
+
+    sp_skill_points: list[tuple[int, int]] = []  # (tick, deck slot)
+    fever_ticks: dict[str, list[int]] = {
+        name: [] for name in _FEVER_POINT_TYPES.values()
+    }
 
     taps: list[_SusNote] = []
     directionals: list[_SusNote] = []
@@ -149,6 +179,17 @@ def loads(data: str) -> Score:
                 wave_offset = float(val or 0)
             elif key == "BASEBPM":
                 base_bpm = float(val or 120)
+            elif key == "SP_SKILL":  # legacy sp skill line: #SP_SKILL mmm num/den slot
+                sm = _SP_SKILL_RE.match(val)
+                if sm:
+                    den = int(sm.group(3))
+                    tick = _get_ticks(
+                        bars,
+                        int(sm.group(1)),
+                        int(sm.group(2)) if den else 0,
+                        den or 1,
+                    )
+                    sp_skill_points.append((tick, int(sm.group(4))))
             continue
 
         header = line[1:colon].strip()
@@ -202,6 +243,21 @@ def loads(data: str) -> Score:
                         nms_definitions.get(cell, 1.0),
                     )
                 )
+            continue
+        if header[3:] == "0B":  # sp skill: each cell is a deck slot number (1-5)
+            for pos, value, total in _meta_values(line_data):
+                if value >= 1:
+                    sp_skill_points.append(
+                        (_get_ticks(bars, measure, pos, total), value)
+                    )
+            continue
+        if header[3:] in ("0C", "0D"):  # fever charge / fever section
+            for pos, value, total in _meta_values(line_data):
+                point_type = _FEVER_POINT_TYPES.get((lane_char, value))
+                if point_type is not None:
+                    fever_ticks[point_type].append(
+                        _get_ticks(bars, measure, pos, total)
+                    )
             continue
 
         if event == "1":  # tap channel
@@ -274,6 +330,8 @@ def loads(data: str) -> Score:
         ghosts,
         sorted(bpm_data_lines),
         nms_data_lines,
+        sp_skill_points,
+        fever_ticks,
         music_id,
         wave_offset,
         ticks_per_beat,
@@ -287,6 +345,8 @@ def _holodori_to_score(
     ghosts: list[tuple[list[_SusNote], str | None]],
     bpms: list[tuple[int, float]],
     nms: list[tuple[int, float]],
+    sp_skill_points: list[tuple[int, int]],
+    fever_ticks: dict[str, list[int]],
     music_id: str,
     wave_offset: float,
     ticks_per_beat: int,
@@ -335,6 +395,22 @@ def _holodori_to_score(
     else:
         tsg.append(TimeScalePoint(beat=0.0, timeScale=1.0))
     notes.append(tsg)
+
+    for tick, slot in sorted(set(sp_skill_points)):
+        notes.append(HolodoriSkill(beat=_tick_to_beat(tick), slot=slot))
+
+    # the game drops the whole section unless it has exactly one of each point, in order
+    points = [
+        fever_ticks[name]
+        for name in ("chargeStart", "chargeEnd", "feverStart", "feverEnd")
+    ]
+    if all(len(p) == 1 for p in points):
+        charge_start, charge_end, fever_start, fever_end = (p[0] for p in points)
+        if charge_start <= charge_end <= fever_start <= fever_end:
+            notes.append(HolodoriChargeStart(beat=_tick_to_beat(charge_start)))
+            notes.append(HolodoriChargeEnd(beat=_tick_to_beat(charge_end)))
+            notes.append(HolodoriFeverStart(beat=_tick_to_beat(fever_start)))
+            notes.append(HolodoriFeverEnd(beat=_tick_to_beat(fever_end)))
 
     # SINGLES. NORMAL (tap kind-1) and FLICK (directional kind-1/3/4) are disjoint; a tap with a
     # co-located directional is one flick. a directional on a hold start/end belongs to that slide.

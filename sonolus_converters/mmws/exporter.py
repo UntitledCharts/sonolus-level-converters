@@ -248,7 +248,7 @@ def export(
             signature = Signature.MikuMikuWorld4UntitledChart
         case _:
             raise ValueError(f"Unsupported format: {format}")
-    noteGroups = NoteGroups(score.notes)
+    noteGroups = NoteGroups(convert_holodori_events(score.notes))
 
     try:
         write_cstr(fbin, signature.value)

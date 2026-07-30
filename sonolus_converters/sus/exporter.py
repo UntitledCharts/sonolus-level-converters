@@ -11,6 +11,7 @@ from ..notes.score import Score
 from ..notes.bpm import Bpm
 from ..notes.timescale import TimeScaleGroup, TimeScalePoint
 from ..notes.single import Single, Skill, FeverStart, FeverChance
+from ..notes.holodorievents import convert_holodori_events
 from ..notes.slide import Slide, SlideStartPoint, SlideRelayPoint, SlideEndPoint
 from ..notes.guide import Guide, GuidePoint
 from ..notes.volume import Volume
@@ -116,7 +117,7 @@ def _score_to_sus(
     critical_keys: set[str] = set()
 
     til_index = 0
-    for note in score.notes:
+    for note in convert_holodori_events(score.notes):
         if isinstance(note, Bpm):
             bpms.append((_beat_to_tick(note.beat), note.bpm))
 
