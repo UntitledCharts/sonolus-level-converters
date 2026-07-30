@@ -1010,12 +1010,18 @@ class Score:
 
     @property
     def combo_count(self) -> int:
+        return sum(1 for _ in self.combo_events())
+
+    def combo_events(self):
         TICKS_PER_BEAT = 480
         HALF_BEAT = TICKS_PER_BEAT // 2
-        count = 0
         for note in self.notes:
             if isinstance(note, Single):
-                count += 1
+                yield (
+                    "flicks" if note.direction is not None else "taps",
+                    bool(note.critical),
+                    note.beat,
+                )
             elif isinstance(note, Slide):
                 connections = sorted(note.connections, key=lambda c: c.beat)
                 start_tick = round(connections[0].beat * TICKS_PER_BEAT)
@@ -1024,45 +1030,51 @@ class Score:
                     eighth_tick -= eighth_tick % HALF_BEAT
                 end_tick = round(connections[-1].beat * TICKS_PER_BEAT)
                 has_ticks = eighth_tick != start_tick and eighth_tick != end_tick
+                crit = bool(note.critical)
                 prev_joint: SlideStartPoint | SlideRelayPoint | None = None
                 for conn in connections:
                     if isinstance(conn, SlideStartPoint):
                         if conn.judgeType != "none":
-                            count += 1
+                            yield ("long_starts", bool(conn.critical), conn.beat)
                         prev_joint = conn
                     elif isinstance(conn, SlideEndPoint):
                         if conn.judgeType != "none":
-                            count += 1
+                            cat = (
+                                "long_flick_ends"
+                                if conn.direction is not None
+                                else "long_ends"
+                            )
+                            yield (cat, bool(conn.critical), conn.beat)
                         if prev_joint is not None and has_ticks:
-                            conn_tick = round(conn.beat * TICKS_PER_BEAT)
-                            adj_end = conn_tick
+                            adj_end = round(conn.beat * TICKS_PER_BEAT)
                             if adj_end % HALF_BEAT:
                                 adj_end += HALF_BEAT - adj_end % HALF_BEAT
-                            if eighth_tick < adj_end:
-                                steps = (adj_end - eighth_tick) // HALF_BEAT
-                                count += steps
-                                eighth_tick += steps * HALF_BEAT
+                            while eighth_tick < adj_end:
+                                yield (
+                                    "long_continuations",
+                                    crit,
+                                    eighth_tick / TICKS_PER_BEAT,
+                                )
+                                eighth_tick += HALF_BEAT
                     elif isinstance(conn, SlideRelayPoint):
                         if conn.type == "attach":
                             if conn.critical is not None:
-                                count += 1
+                                yield ("long_relays", bool(conn.critical), conn.beat)
                         else:
-                            # visible tick adds combo AND the 8th hold tick at
-                            # the same beat also adds combo — this double-count
-                            # is correct and matches the game
                             if conn.critical is not None:
-                                count += 1
+                                yield ("long_relays", bool(conn.critical), conn.beat)
                             if prev_joint is not None and has_ticks:
-                                conn_tick = round(conn.beat * TICKS_PER_BEAT)
-                                adj_end = conn_tick
+                                adj_end = round(conn.beat * TICKS_PER_BEAT)
                                 if adj_end % HALF_BEAT:
                                     adj_end += HALF_BEAT - adj_end % HALF_BEAT
-                                if eighth_tick < adj_end:
-                                    steps = (adj_end - eighth_tick) // HALF_BEAT
-                                    count += steps
-                                    eighth_tick += steps * HALF_BEAT
+                                while eighth_tick < adj_end:
+                                    yield (
+                                        "long_continuations",
+                                        crit,
+                                        eighth_tick / TICKS_PER_BEAT,
+                                    )
+                                    eighth_tick += HALF_BEAT
                             prev_joint = conn
-        return count
 
     @property
     def note_count(self) -> int:
